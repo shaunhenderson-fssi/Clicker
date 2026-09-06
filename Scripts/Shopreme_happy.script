@@ -1,0 +1,18 @@
+﻿;Load Login
+Alias ScanField 9440352
+Alias "Complete sale" 46074850
+Alias "Club+ is not active" 3149724
+Alias "Club+ card dialog" 9769660
+
+# Enter QR code
+SetText ScanField SPRabcde200
+PressKey Enter
+Sleep 200
+# The club+ card is not active
+ClickButton "Club+ is not active" OK
+
+# Pay
+ClickButton "Touch Screen" "Complete sale"
+;ClickButton Payment OK
+;ClickButton EFTPOS OK
+;ClickButton "EftPos Card Info" Ok

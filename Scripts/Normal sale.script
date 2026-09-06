@@ -1,0 +1,13 @@
+﻿;Load login
+Alias ScanField 200994
+Alias "Complete sale" 201096
+
+SetText ScanField 9414982020900 ;kenya bold
+PressKey Enter
+Sleep 200
+
+ClickButton "Touch Screen" "Complete sale"
+ClickButton "formDlg" "No Card"
+MouseClick 272 178
+ClickButton Payment OK
+ClickButton Choices "21.20"

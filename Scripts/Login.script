@@ -1,0 +1,4 @@
+﻿; Login as normal user
+SetText Logon Name 9000
+TypePassword Logon Password 83F27BF2
+ClickButton Logon OK

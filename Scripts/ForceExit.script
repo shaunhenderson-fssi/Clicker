@@ -1,0 +1,4 @@
+ClickButton "Other"
+ClickButton "Select an option" "System ..."
+ClickButton "Select an option" "Force exit"
+ClickButton "formDlg" "Exit"

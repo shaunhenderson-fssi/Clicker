@@ -1,0 +1,19 @@
+﻿# Logout
+Alias "Green exit button" 3936724
+Alias "Password field" 4918426
+
+ClickElement "Touch Screen" "Green exit button"
+ClickButton "Select an option" "Open drawer and Exit POS"
+Sleep 100; give the next dialog time to open
+
+;Red logout screen, logout as supervisor
+SetText Logout Name 9001
+TypePassword Logout Password 81F97CF0
+ClickButton Logout OK
+Sleep 100; give the next dialog time to open
+
+;Password required, username 9001 should already be there
+If Edit "Password required" "Password field" 9000
+MouseClick 798 122 ;enter password
+TypePassword 83F27BF2
+ClickButton "Password required" Logout
