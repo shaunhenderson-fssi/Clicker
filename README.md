@@ -1,7 +1,9 @@
 This program can interact with other Windows programs (using the Win32 API).
 
 It has the following features:
-- Scripting
+- Can click on named buttons
+- Can type text into fields
+- Rudimentary scripting
 - Can load/save to script files
 - Can automatically run a script via command line arguments
 - Comments
