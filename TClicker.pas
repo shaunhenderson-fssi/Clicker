@@ -4,7 +4,7 @@
   Author:      Shaun (Bill) Henderson
   Company:     Foodstuffs SI
   Created:     April 2026
-  Purpose:     Mainly to enable easy replacement of P1.exe on SCO
+  Purpose:     GUI automation and window-inspection utility
 
   Description:
   This form provides a small GUI-automation and inspection tool used to
@@ -28,8 +28,8 @@
   using EM_GETFIRSTVISIBLELINE and EM_LINESCROLL.
 
   - The Timer1 component drives the live UI inspector. When enabled, it
-  polls the mouse position and updates lblStatus with information about
-  the window under the cursor.
+  updates the form title and displays a click-through overlay with a dotted
+  outline and control details beside the mouse cursor.
 
   - Script files are loaded and saved using btnLoad and btnSave. The
   filename is tracked in FScriptFilename so the Save button can be
@@ -54,6 +54,7 @@ interface
 uses
   System.Classes, // TStringList
   System.Generics.Collections, // TArray
+  System.Math,
   System.SysUtils, // Trim, SameText
   System.TypInfo, // PropInfo
   // System.UITypes, //MessageDlg
@@ -74,6 +75,23 @@ uses
   Vcl.StdCtrls, Vcl.Menus; // TButton, TEdit, TLabel, etc
 
 type
+  TInspectorOverlay = class(TForm)
+  private
+    FTargetRect: TRect;
+    FInfoRect: TRect;
+    FInfoLines: TStringList;
+  protected
+    procedure CreateParams(var Params: TCreateParams); override;
+    procedure Paint; override;
+    procedure WMMouseActivate(var Message: TWMMouseActivate);
+      message WM_MOUSEACTIVATE;
+  public
+    constructor Create(AOwner: TComponent); override;
+    destructor Destroy; override;
+    procedure UpdateInspector(const TargetRect: TRect;
+      const CursorPos: TPoint; const Lines: TStrings);
+  end;
+
   TForm1 = class(TForm)
     btnGo: TButton;
     defaultWindowName: TEdit;
@@ -114,6 +132,9 @@ type
     FScriptFilename: string;
     FEncryptInput: TEdit;
     FEncryptOutput: TEdit;
+    FInspectorOverlay: TInspectorOverlay;
+    FLastInspectorPos: TPoint;
+    FHasInspectorPos: Boolean;
     procedure EncryptClick(Sender: TObject);
     procedure CloseWindowByCaption(const WindowTitle: string);
     procedure LeftClickAt(ScreenX, ScreenY: Integer);
@@ -230,6 +251,126 @@ var
 
 function DeepChildWindowFromPoint(const PtScreen: TPoint): HWND; forward;
 function DescribeAtPoint(const PtScreen: TPoint): string; forward;
+
+constructor TInspectorOverlay.Create(AOwner: TComponent);
+begin
+  inherited CreateNew(AOwner);
+  FInfoLines := TStringList.Create;
+  BorderStyle := bsNone;
+  FormStyle := fsStayOnTop;
+  Position := poDesigned;
+  Color := clFuchsia;
+  TransparentColor := True;
+  TransparentColorValue := clFuchsia;
+  Font.Name := 'Segoe UI';
+  Font.Size := 9;
+end;
+
+destructor TInspectorOverlay.Destroy;
+begin
+  FInfoLines.Free;
+  inherited;
+end;
+
+procedure TInspectorOverlay.CreateParams(var Params: TCreateParams);
+begin
+  inherited CreateParams(Params);
+  Params.ExStyle := Params.ExStyle or WS_EX_TRANSPARENT or WS_EX_TOOLWINDOW
+    or WS_EX_NOACTIVATE;
+end;
+
+procedure TInspectorOverlay.WMMouseActivate(var Message: TWMMouseActivate);
+begin
+  Message.Result := MA_NOACTIVATE;
+end;
+
+procedure TInspectorOverlay.Paint;
+var
+  I, TextY, XOffset, YOffset: Integer;
+  LocalTarget: TRect;
+begin
+  Canvas.Brush.Color := clFuchsia;
+  Canvas.FillRect(ClientRect);
+
+  if (FTargetRect.Right > FTargetRect.Left) and
+    (FTargetRect.Bottom > FTargetRect.Top) then
+  begin
+    LocalTarget := FTargetRect;
+    OffsetRect(LocalTarget, -Left, -Top);
+    Canvas.Pen.Color := clRed;
+    Canvas.Pen.Style := psDot;
+    Canvas.Pen.Width := 2;
+    Canvas.Brush.Style := bsClear;
+    Canvas.Rectangle(LocalTarget);
+  end;
+
+  TextY := FInfoRect.Top + 3;
+  Canvas.Font.Color := clBlack;
+  for I := 0 to FInfoLines.Count - 1 do
+  begin
+    for YOffset := -1 to 1 do
+      for XOffset := -1 to 1 do
+        if (XOffset <> 0) or (YOffset <> 0) then
+          Canvas.TextOut(FInfoRect.Left + 4 + XOffset,
+            TextY + YOffset, FInfoLines[I]);
+
+    Canvas.Font.Color := clWhite;
+    Canvas.TextOut(FInfoRect.Left + 4, TextY, FInfoLines[I]);
+    Canvas.Font.Color := clBlack;
+    Inc(TextY, 18);
+  end;
+end;
+
+procedure TInspectorOverlay.UpdateInspector(const TargetRect: TRect;
+  const CursorPos: TPoint; const Lines: TStrings);
+var
+  I, InfoWidth, InfoHeight, InfoLeft, InfoTop: Integer;
+  VirtualLeft, VirtualTop, VirtualRight, VirtualBottom: Integer;
+  Bounds: TRect;
+begin
+  FInfoLines.Assign(Lines);
+  FTargetRect := TargetRect;
+
+  Canvas.Font.Assign(Font);
+  InfoWidth := 0;
+  for I := 0 to FInfoLines.Count - 1 do
+    InfoWidth := Max(InfoWidth, Canvas.TextWidth(FInfoLines[I]));
+  InfoWidth := Min(InfoWidth + 12, 500);
+  InfoHeight := FInfoLines.Count * 18 + 8;
+
+  VirtualLeft := GetSystemMetrics(SM_XVIRTUALSCREEN);
+  VirtualTop := GetSystemMetrics(SM_YVIRTUALSCREEN);
+  VirtualRight := VirtualLeft + GetSystemMetrics(SM_CXVIRTUALSCREEN);
+  VirtualBottom := VirtualTop + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+  InfoLeft := CursorPos.X + 20;
+  InfoTop := CursorPos.Y + 20;
+  if InfoLeft + InfoWidth > VirtualRight then
+    InfoLeft := VirtualRight - InfoWidth;
+  if InfoTop + InfoHeight > VirtualBottom then
+    InfoTop := VirtualBottom - InfoHeight;
+  InfoLeft := Max(InfoLeft, VirtualLeft);
+  InfoTop := Max(InfoTop, VirtualTop);
+
+  Bounds := TargetRect;
+  if (Bounds.Right <= Bounds.Left) or (Bounds.Bottom <= Bounds.Top) then
+    Bounds := Rect(InfoLeft, InfoTop, InfoLeft + InfoWidth,
+      InfoTop + InfoHeight)
+  else
+  begin
+    Bounds.Left := Min(Bounds.Left, InfoLeft);
+    Bounds.Top := Min(Bounds.Top, InfoTop);
+    Bounds.Right := Max(Bounds.Right, InfoLeft + InfoWidth);
+    Bounds.Bottom := Max(Bounds.Bottom, InfoTop + InfoHeight);
+  end;
+
+  SetBounds(Bounds.Left, Bounds.Top, Max(1, Bounds.Right - Bounds.Left),
+    Max(1, Bounds.Bottom - Bounds.Top));
+  FInfoRect := Rect(InfoLeft - Left, InfoTop - Top,
+    InfoLeft - Left + InfoWidth, InfoTop - Top + InfoHeight);
+  SetWindowPos(Handle, HWND_TOPMOST, Left, Top, Width, Height,
+    SWP_NOACTIVATE or SWP_SHOWWINDOW);
+  Invalidate;
+end;
 
 { =================== Unit-scope helpers =================== }
 
@@ -1141,13 +1282,30 @@ begin
 end;
 
 function GetCaptionAtPoint(const pt: TPoint): string;
+  function GetControlCaption(Control: TObject): string;
+  var
+    PropInfo: PPropInfo;
+  begin
+    Result := '';
+
+    PropInfo := GetPropInfo(Control, 'Caption');
+    if PropInfo <> nil then
+      Result := GetStrProp(Control, PropInfo);
+
+    if Result = '' then
+    begin
+      PropInfo := GetPropInfo(Control, 'CaptionValue');
+      if PropInfo <> nil then
+        Result := GetStrProp(Control, PropInfo);
+    end;
+  end;
+
 var
   h: HWND;
   ctrl: TWinControl;
   child: TControl;
   i: Integer;
   localPt: TPoint;
-  PropInfo: PPropInfo;
 begin
   Result := '';
 
@@ -1166,17 +1324,15 @@ begin
     child := ctrl.Controls[i];
     if child.Visible and PtInRect(child.BoundsRect, localPt) then
     begin
-      // Try CaptionValue
-      PropInfo := GetPropInfo(child, 'CaptionValue');
-      if PropInfo <> nil then
-        Exit(GetStrProp(child, PropInfo));
-
-      // Fallback: normal Caption
-      PropInfo := GetPropInfo(child, 'Caption');
-      if PropInfo <> nil then
-        Exit(GetStrProp(child, PropInfo));
+      Result := GetControlCaption(child);
+      if Result <> '' then
+        Exit;
     end;
   end;
+
+  // Only use the container's caption when its HWND is the actual hit target.
+  if ctrl.Handle = h then
+    Result := GetControlCaption(ctrl);
 end;
 
 function GetWindowCaptionOrID(h: HWND): string;
@@ -1246,6 +1402,55 @@ begin
   Result := Format
     ('ID=%d Text="%s" Parent="%s" HWND=%p Pos=%s Class=%s Mouse=[%d %d]',
     [ID, sTxt, parentTxt, Pointer(h), RectToStr(R), cls, pt.X, pt.Y]);
+end;
+
+function DescribeWindowDetails(h: HWND; const Pt: TPoint): TStringList;
+var
+  ClassNameBuffer, TextBuffer: array [0 .. 255] of Char;
+  CaptionText, ParentText: string;
+  ParentH: HWND;
+  R: TRect;
+  ID: LongInt;
+begin
+  Result := TStringList.Create;
+  if h = 0 then
+  begin
+    Result.Add('No object under cursor');
+    Exit;
+  end;
+
+  GetClassName(h, ClassNameBuffer, Length(ClassNameBuffer));
+  GetWindowText(h, TextBuffer, Length(TextBuffer));
+  CaptionText := TextBuffer;
+  if CaptionText = '' then
+    CaptionText := GetCaptionAtPoint(Pt);
+  CaptionText := StringReplace(CaptionText, #13, ' ', [rfReplaceAll]);
+  CaptionText := StringReplace(CaptionText, #10, ' ', [rfReplaceAll]);
+  if Length(CaptionText) > 100 then
+    CaptionText := Copy(CaptionText, 1, 97) + '...';
+  if CaptionText = '' then
+    CaptionText := '(none)';
+
+  ParentH := GetParent(h);
+  if ParentH <> 0 then
+    ParentText := GetWindowCaptionOrID(ParentH)
+  else
+    ParentText := '(none)';
+  if Length(ParentText) > 50 then
+    ParentText := Copy(ParentText, 1, 47) + '...';
+
+  if not GetWindowRect(h, R) then
+    R := Rect(0, 0, 0, 0);
+
+  ID := GetWindowLong(h, GWL_ID);
+  Result.Add('Object class: ' + string(ClassNameBuffer));
+  Result.Add(Format('ID: %d  HWND: %p', [ID, Pointer(h)]));
+  Result.Add('Parent: ' + ParentText);
+  Result.Add('Pos: ' + RectToStr(R));
+  Result.Add(Format('Left: %d  Top: %d', [R.Left, R.Top]));
+  Result.Add(Format('Width: %d  Height: %d',
+    [R.Right - R.Left, R.Bottom - R.Top]));
+  Result.Add('Caption: ' + CaptionText);
 end;
 
 function DescribeAtPoint(const PtScreen: TPoint): string;
@@ -1603,6 +1808,8 @@ end;
 
 procedure TForm1.FormCreate(Sender: TObject);
 begin
+  FInspectorOverlay := TInspectorOverlay.Create(nil);
+  FHasInspectorPos := False;
   FScriptFilename := '';
   FAliases := TStringList.Create;
   FAliases.CaseSensitive := False;
@@ -1632,6 +1839,7 @@ end;
 
 procedure TForm1.FormDestroy(Sender: TObject);
 begin
+  FInspectorOverlay.Free;
   FAliases.Free;
 end;
 
@@ -1711,14 +1919,31 @@ var
   pt: TPoint;
   h: HWND;
   S: string;
+  R: TRect;
+  Details: TStringList;
 begin
   GetCursorPos(pt);
+  if FHasInspectorPos and (pt.X = FLastInspectorPos.X) and
+    (pt.Y = FLastInspectorPos.Y) then
+    Exit;
+
+  FLastInspectorPos := pt;
+  FHasInspectorPos := True;
+
   h := DeepChildWindowFromPoint(pt);
   S := DescribeWindow(h);
 
   // Show live info
   Caption := 'Clicker - ' + S;
-  // OutputDebugString(PChar('Inspect: ' + S));
+  if GetWindowRect(h, R) = False then
+    R := Rect(0, 0, 0, 0);
+
+  Details := DescribeWindowDetails(h, pt);
+  try
+    FInspectorOverlay.UpdateInspector(R, pt, Details);
+  finally
+    Details.Free;
+  end;
 end;
 
 procedure TForm1.btnLoadClick(Sender: TObject);
