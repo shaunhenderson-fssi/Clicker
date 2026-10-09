@@ -72,7 +72,7 @@ uses
   Vcl.ExtCtrls, // TTimer
   Vcl.Forms, // TForm
   Vcl.Graphics, // fsBold
-  Vcl.StdCtrls, Vcl.Menus; // TButton, TEdit, TLabel, etc
+  Vcl.StdCtrls, Vcl.Menus, System.ImageList, Vcl.ImgList; // TButton, TEdit, TLabel, etc
 
 type
   TInspectorOverlay = class(TForm)
@@ -80,6 +80,7 @@ type
     FTargetRect: TRect;
     FInfoRect: TRect;
     FInfoLines: TStringList;
+    FInfoVisible: Boolean;
   protected
     procedure CreateParams(var Params: TCreateParams); override;
     procedure Paint; override;
@@ -88,12 +89,15 @@ type
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
+    function ContainsInfoAt(const ScreenPos: TPoint): Boolean;
+    procedure HideInfo;
     procedure UpdateInspector(const TargetRect: TRect;
       const CursorPos: TPoint; const Lines: TStrings);
   end;
 
   TForm1 = class(TForm)
     btnGo: TButton;
+    btnRecord: TButton;
     defaultWindowName: TEdit;
     lblDefaultWindowName: TLabel;
     grpTop: TGroupBox;
@@ -115,8 +119,10 @@ type
     Encryption1: TMenuItem;
     lblPauseTime: TLabel;
     edtPauseTime: TEdit;
+    ImageList1: TImageList;
 
     procedure btnGoClick(Sender: TObject);
+    procedure btnRecordClick(Sender: TObject);
     procedure tmrInspectorTimer(Sender: TObject);
     procedure mmoScriptChange(Sender: TObject);
     procedure btnLoadClick(Sender: TObject);
@@ -130,6 +136,8 @@ type
 
   private
     FScriptFilename: string;
+    FRecording: Boolean;
+    FRecordedText: string;
     FEncryptInput: TEdit;
     FEncryptOutput: TEdit;
     FInspectorOverlay: TInspectorOverlay;
@@ -137,7 +145,14 @@ type
     FHasInspectorPos: Boolean;
     procedure EncryptClick(Sender: TObject);
     procedure CloseWindowByCaption(const WindowTitle: string);
-    procedure LeftClickAt(ScreenX, ScreenY: Integer);
+    procedure MouseClickAt(ScreenX, ScreenY: Integer; const Button: string);
+    procedure ScrollMouseAt(ScreenX, ScreenY, Delta: Integer);
+    procedure AppendRecordedCommand(const Command: string);
+    procedure SetRecording(Value: Boolean);
+    procedure RecordKey(VKCode, ScanCode: UINT);
+    procedure FlushRecordedText;
+    procedure RecordMouseClick(ScreenX, ScreenY: Integer;
+      const Button: string);
     function SetEditText(Edit: HWND; const Value: string): Boolean;
     procedure RunScriptFile(FileName: string);
     procedure RunScriptLines(Lines: TStrings; const SourceName: string);
@@ -217,14 +232,15 @@ const
   IID_IUIAutomationElement: TGUID = '{D22108AA-8AC5-49A5-837B-37BBB3D7591E}';
   IID_IUIAutomationInvokePattern: TGUID = '{FB377FBE-8EA6-46D5-9C73-6499642D3059}';
 
-  CmdColorMap: array [0 .. 10] of record Cmd: string;
+  CmdColorMap: array [0 .. 11] of record Cmd: string;
   Color: TColor;
   end = ((Cmd: '#'; Color: clGray), (Cmd: 'DumpWindow'; Color: clRed),
     (Cmd: 'DumpHere'; Color: clRed), (Cmd: 'ClickButton'; Color: clGreen),
     (Cmd: 'ClickElement'; Color: clGreen), (Cmd: 'MouseClick'; Color: clGreen),
     (Cmd: 'PressKey'; Color: clBlue), (Cmd: 'SetText'; Color: clBlue),
     (Cmd: 'TypeText'; Color: clBlue), (Cmd: 'Close'; Color: $0000A5FF), // orange-ish
-    (Cmd: 'Sleep'; Color: $00FF00FF) // purple
+    (Cmd: 'Sleep'; Color: $00FF00FF), // purple
+    (Cmd: 'MouseWheel'; Color: clGreen)
   );
 
   // Treat these as "edit-like" window classes
@@ -244,13 +260,132 @@ implementation
 {$R *.dfm}
 { ===================== Mouse inspector (unit-scope) ===================== }
 
+type
+  PMacroKeyboardHookInfo = ^TMacroKeyboardHookInfo;
+  TMacroKeyboardHookInfo = record
+    vkCode: DWORD;
+    scanCode: DWORD;
+    flags: DWORD;
+    time: DWORD;
+    dwExtraInfo: ULONG_PTR;
+  end;
+
+  PMacroMouseHookInfo = ^TMacroMouseHookInfo;
+  TMacroMouseHookInfo = record
+    pt: TPoint;
+    mouseData: DWORD;
+    flags: DWORD;
+    time: DWORD;
+    dwExtraInfo: ULONG_PTR;
+  end;
+
+const
+  LLKHF_INJECTED_FLAG = $00000010;
+  LLMHF_INJECTED_FLAG = $00000001;
+
 var
   GMouseHook: HHOOK = 0;
   GLastTick: DWORD = 0;
   GInspectOn: Boolean = False;
+  GKeyboardRecordHook: HHOOK = 0;
+  GMouseRecordHook: HHOOK = 0;
+  GRecorderForm: TForm1 = nil;
+  GRecordedKeys: array[0..255] of Boolean;
 
+function LowLevelKeyboardRecordProc(nCode: Integer; wParam: WPARAM; lParam: LPARAM): LRESULT; stdcall; forward;
+function LowLevelMouseRecordProc(nCode: Integer; wParam: WPARAM; lParam: LPARAM): LRESULT; stdcall; forward;
 function DeepChildWindowFromPoint(const PtScreen: TPoint): HWND; forward;
 function DescribeAtPoint(const PtScreen: TPoint): string; forward;
+
+function QuoteScriptToken(const Value: string): string;
+begin
+  Result := '"' + Value.Replace('"', '""') + '"';
+end;
+
+function LowLevelKeyboardRecordProc(nCode: Integer; wParam: WPARAM;
+  lParam: LPARAM): LRESULT; stdcall;
+var
+  KeyInfo: PMacroKeyboardHookInfo;
+  VKCode: UINT;
+  IsKeyUp: Boolean;
+  ProcessId: DWORD;
+begin
+  if (nCode = HC_ACTION) and (GRecorderForm <> nil) and
+    GRecorderForm.FRecording and
+    ((wParam = WM_KEYDOWN) or (wParam = WM_SYSKEYDOWN) or
+     (wParam = WM_KEYUP) or (wParam = WM_SYSKEYUP)) then
+  begin
+    KeyInfo := PMacroKeyboardHookInfo(lParam);
+    VKCode := KeyInfo.vkCode;
+    IsKeyUp := (wParam = WM_KEYUP) or (wParam = WM_SYSKEYUP);
+
+    if IsKeyUp then
+      GRecordedKeys[VKCode] := False
+    else if (KeyInfo.flags and LLKHF_INJECTED_FLAG) = 0 then
+    begin
+      GetWindowThreadProcessId(GetForegroundWindow(), ProcessId);
+      if (ProcessId <> GetCurrentProcessId()) and not GRecordedKeys[VKCode] then
+        GRecorderForm.RecordKey(VKCode, KeyInfo.scanCode);
+      GRecordedKeys[VKCode] := True;
+    end;
+  end;
+
+  Result := CallNextHookEx(GKeyboardRecordHook, nCode, wParam, lParam);
+end;
+
+function LowLevelMouseRecordProc(nCode: Integer; wParam: WPARAM;
+  lParam: LPARAM): LRESULT; stdcall;
+var
+  MouseInfo: PMacroMouseHookInfo;
+  WindowHandle: HWND;
+  ProcessId: DWORD;
+  WheelDelta: SmallInt;
+  Button: string;
+begin
+  if (nCode = HC_ACTION) and (GRecorderForm <> nil) and
+    GRecorderForm.FRecording then
+  begin
+    MouseInfo := PMacroMouseHookInfo(lParam);
+    if (MouseInfo.flags and LLMHF_INJECTED_FLAG) = 0 then
+    begin
+      Button := '';
+      if wParam = WM_LBUTTONDOWN then
+        Button := 'Left'
+      else if wParam = WM_RBUTTONDOWN then
+        Button := 'Right'
+      else if wParam = WM_MBUTTONDOWN then
+        Button := 'Middle';
+
+      if Button <> '' then
+      begin
+        WindowHandle := WindowFromPoint(MouseInfo.pt);
+        GetWindowThreadProcessId(WindowHandle, ProcessId);
+
+        if ProcessId <> GetCurrentProcessId() then
+        begin
+          GRecorderForm.FlushRecordedText;
+          GRecorderForm.RecordMouseClick(MouseInfo.pt.X, MouseInfo.pt.Y,
+            Button);
+        end;
+      end
+      else if wParam = WM_MOUSEWHEEL then
+      begin
+        WindowHandle := WindowFromPoint(MouseInfo.pt);
+        GetWindowThreadProcessId(WindowHandle, ProcessId);
+        WheelDelta := SmallInt((MouseInfo.mouseData shr 16) and $FFFF);
+
+        if ProcessId <> GetCurrentProcessId() then
+        begin
+          GRecorderForm.FlushRecordedText;
+          GRecorderForm.AppendRecordedCommand(Format('MouseWheel %d %d %d',
+            [MouseInfo.pt.X, MouseInfo.pt.Y, WheelDelta]));
+        end;
+      end;
+    end;
+  end;
+
+  Result := CallNextHookEx(GMouseRecordHook, nCode, wParam, lParam);
+end;
 
 constructor TInspectorOverlay.Create(AOwner: TComponent);
 begin
@@ -275,13 +410,30 @@ end;
 procedure TInspectorOverlay.CreateParams(var Params: TCreateParams);
 begin
   inherited CreateParams(Params);
-  Params.ExStyle := Params.ExStyle or WS_EX_TRANSPARENT or WS_EX_TOOLWINDOW
-    or WS_EX_NOACTIVATE;
+  Params.ExStyle := Params.ExStyle or WS_EX_TRANSPARENT or WS_EX_TOOLWINDOW or WS_EX_NOACTIVATE;
 end;
 
 procedure TInspectorOverlay.WMMouseActivate(var Message: TWMMouseActivate);
 begin
   Message.Result := MA_NOACTIVATE;
+end;
+
+function TInspectorOverlay.ContainsInfoAt(const ScreenPos: TPoint): Boolean;
+var
+  ScreenInfoRect: TRect;
+begin
+  ScreenInfoRect := FInfoRect;
+  OffsetRect(ScreenInfoRect, Left, Top);
+  Result := PtInRect(ScreenInfoRect, ScreenPos);
+end;
+
+procedure TInspectorOverlay.HideInfo;
+begin
+  if FInfoVisible then
+  begin
+    FInfoVisible := False;
+    Invalidate;
+  end;
 end;
 
 procedure TInspectorOverlay.Paint;
@@ -304,20 +456,23 @@ begin
     Canvas.Rectangle(LocalTarget);
   end;
 
-  TextY := FInfoRect.Top + 3;
-  Canvas.Font.Color := clBlack;
-  for I := 0 to FInfoLines.Count - 1 do
+  if FInfoVisible then
   begin
-    for YOffset := -1 to 1 do
-      for XOffset := -1 to 1 do
-        if (XOffset <> 0) or (YOffset <> 0) then
-          Canvas.TextOut(FInfoRect.Left + 4 + XOffset,
-            TextY + YOffset, FInfoLines[I]);
-
-    Canvas.Font.Color := clWhite;
-    Canvas.TextOut(FInfoRect.Left + 4, TextY, FInfoLines[I]);
+    TextY := FInfoRect.Top + 3;
     Canvas.Font.Color := clBlack;
-    Inc(TextY, 18);
+    for I := 0 to FInfoLines.Count - 1 do
+    begin
+      for YOffset := -1 to 1 do
+        for XOffset := -1 to 1 do
+          if (XOffset <> 0) or (YOffset <> 0) then
+            Canvas.TextOut(FInfoRect.Left + 4 + XOffset,
+              TextY + YOffset, FInfoLines[I]);
+
+      Canvas.Font.Color := clWhite;
+      Canvas.TextOut(FInfoRect.Left + 4, TextY, FInfoLines[I]);
+      Canvas.Font.Color := clBlack;
+      Inc(TextY, 18);
+    end;
   end;
 end;
 
@@ -330,11 +485,13 @@ var
 begin
   FInfoLines.Assign(Lines);
   FTargetRect := TargetRect;
+  FInfoVisible := True;
 
   Canvas.Font.Assign(Font);
   InfoWidth := 0;
   for I := 0 to FInfoLines.Count - 1 do
     InfoWidth := Max(InfoWidth, Canvas.TextWidth(FInfoLines[I]));
+
   InfoWidth := Min(InfoWidth + 12, 500);
   InfoHeight := FInfoLines.Count * 18 + 8;
 
@@ -344,10 +501,13 @@ begin
   VirtualBottom := VirtualTop + GetSystemMetrics(SM_CYVIRTUALSCREEN);
   InfoLeft := CursorPos.X + 20;
   InfoTop := CursorPos.Y + 20;
+
   if InfoLeft + InfoWidth > VirtualRight then
     InfoLeft := VirtualRight - InfoWidth;
+
   if InfoTop + InfoHeight > VirtualBottom then
     InfoTop := VirtualBottom - InfoHeight;
+
   InfoLeft := Max(InfoLeft, VirtualLeft);
   InfoTop := Max(InfoTop, VirtualTop);
 
@@ -363,12 +523,9 @@ begin
     Bounds.Bottom := Max(Bounds.Bottom, InfoTop + InfoHeight);
   end;
 
-  SetBounds(Bounds.Left, Bounds.Top, Max(1, Bounds.Right - Bounds.Left),
-    Max(1, Bounds.Bottom - Bounds.Top));
-  FInfoRect := Rect(InfoLeft - Left, InfoTop - Top,
-    InfoLeft - Left + InfoWidth, InfoTop - Top + InfoHeight);
-  SetWindowPos(Handle, HWND_TOPMOST, Left, Top, Width, Height,
-    SWP_NOACTIVATE or SWP_SHOWWINDOW);
+  SetBounds(Bounds.Left, Bounds.Top, Max(1, Bounds.Right - Bounds.Left), Max(1, Bounds.Bottom - Bounds.Top));
+  FInfoRect := Rect(InfoLeft - Left, InfoTop - Top, InfoLeft - Left + InfoWidth, InfoTop - Top + InfoHeight);
+  SetWindowPos(Handle, HWND_TOPMOST, Left, Top, Width, Height, SWP_NOACTIVATE or SWP_SHOWWINDOW);
   Invalidate;
 end;
 
@@ -402,10 +559,12 @@ begin
     M := TMemo.Create(F);
     M.Parent := F;
     M.Align := alClient;
+
     if ShowScrollbars then
       M.ScrollBars := ssBoth
     else
       M.ScrollBars := ssNone;
+
     M.ReadOnly := True;
     M.WordWrap := False;
     M.Lines.Text := Text;
@@ -457,7 +616,8 @@ begin
       begin
         IDs := IDs + [ID];
 
-        S.AppendLine(Format('Child ID=%d Text="%s" HWND=%p Pos=%s Class=%s',
+        S.AppendLine(Format(
+          'Child ID=%d Text="%s" HWND=%p Pos=%s Class=%s',
           [ID, txt, Pointer(child), RectToStr(R), cls]));
       end;
     end;
@@ -552,7 +712,8 @@ begin
       begin
         Inc(j);
         IDs := IDs + [ID];
-        S.AppendLine(Format('#%d ID=%d HWND=%p Class=%s Text="%s" Rect=%s',
+        S.AppendLine(Format(
+          '#%d ID=%d HWND=%p Class=%s Text="%s" Rect=%s',
           [j, ID, Pointer(Edits[i]), cls, t, RectToStr(R)]));
       end;
     end;
@@ -636,7 +797,8 @@ begin
         Inc(j);
         IDs := IDs + [ID];
 
-        S.AppendLine(Format('#%d ID=%d HWND=%p Class=%s Text="%s" Rect=%s',
+        S.AppendLine(Format(
+          '#%d ID=%d HWND=%p Class=%s Text="%s" Rect=%s',
           [j, ID, Pointer(Btns[i]), cls, t, RectToStr(R)]));
       end;
     end;
@@ -657,8 +819,8 @@ begin
   W := FindTopWindowByTitleOrClass(TitleOrClass);
   if W = 0 then
   begin
-    ShowTextDialog('Error',
-      Format('%s' + CRLF + 'Window "%s" NOT FOUND (by caption or class).',
+    ShowTextDialog('Error', Format(
+      '%s' + CRLF + 'Window "%s" NOT FOUND (by caption or class).',
       [ContextMsg, TitleOrClass]), 500, 200);
     Exit;
   end;
@@ -743,10 +905,13 @@ begin
   ZeroMemory(@Inp, SizeOf(Inp));
   Inp.Itype := INPUT_KEYBOARD;
   Inp.ki.wVk := VK;
+
   if not KeyDown then
     Inp.ki.dwFlags := Inp.ki.dwFlags or KEYEVENTF_KEYUP;
+
   if Extended then
     Inp.ki.dwFlags := Inp.ki.dwFlags or KEYEVENTF_EXTENDEDKEY;
+
   SendInput(1, @Inp, SizeOf(Inp));
 end;
 
@@ -784,8 +949,10 @@ begin
 
     if shiftNeeded then
       SendInputKey(VK_SHIFT, True, False);
+
     SendInputKey(VK, True, IsExtendedVK(VK));
     SendInputKey(VK, False, IsExtendedVK(VK));
+
     if shiftNeeded then
       SendInputKey(VK_SHIFT, False, False);
   end;
@@ -953,8 +1120,7 @@ begin
   if TryParseHWNDToken(Token, h) then
     Exit(h);
 
-  raise Exception.CreateFmt(
-    'Control "%s" not found (by name, ID, or HWND)', [Token]);
+  raise Exception.CreateFmt('Control "%s" not found (by name, ID, or HWND)', [Token]);
 end;
 
 function KeyNameToVK(const Name: string; out VK: UINT): Boolean;
@@ -976,9 +1142,7 @@ begin
       Exit(True);
     end
     else
-    begin
       Exit(False);
-    end;
   end;
 
   // 2) Named keys
@@ -1399,8 +1563,8 @@ begin
 
   GetWindowRect(h, R);
 
-  Result := Format
-    ('ID=%d Text="%s" Parent="%s" HWND=%p Pos=%s Class=%s Mouse=[%d %d]',
+  Result := Format(
+    'ID=%d Text="%s" Parent="%s" HWND=%p Pos=%s Class=%s Mouse=[%d %d]',
     [ID, sTxt, parentTxt, Pointer(h), RectToStr(R), cls, pt.X, pt.Y]);
 end;
 
@@ -1422,12 +1586,16 @@ begin
   GetClassName(h, ClassNameBuffer, Length(ClassNameBuffer));
   GetWindowText(h, TextBuffer, Length(TextBuffer));
   CaptionText := TextBuffer;
+
   if CaptionText = '' then
     CaptionText := GetCaptionAtPoint(Pt);
+
   CaptionText := StringReplace(CaptionText, #13, ' ', [rfReplaceAll]);
   CaptionText := StringReplace(CaptionText, #10, ' ', [rfReplaceAll]);
+
   if Length(CaptionText) > 100 then
     CaptionText := Copy(CaptionText, 1, 97) + '...';
+
   if CaptionText = '' then
     CaptionText := '(none)';
 
@@ -1436,6 +1604,7 @@ begin
     ParentText := GetWindowCaptionOrID(ParentH)
   else
     ParentText := '(none)';
+
   if Length(ParentText) > 50 then
     ParentText := Copy(ParentText, 1, 47) + '...';
 
@@ -1448,8 +1617,7 @@ begin
   Result.Add('Parent: ' + ParentText);
   Result.Add('Pos: ' + RectToStr(R));
   Result.Add(Format('Left: %d  Top: %d', [R.Left, R.Top]));
-  Result.Add(Format('Width: %d  Height: %d',
-    [R.Right - R.Left, R.Bottom - R.Top]));
+  Result.Add(Format('Width: %d  Height: %d', [R.Right - R.Left, R.Bottom - R.Top]));
   Result.Add('Caption: ' + CaptionText);
 end;
 
@@ -1469,7 +1637,8 @@ begin
   GetWindowRect(h, R);
   ID := GetWindowLong(h, GWL_ID);
 
-  Result := Format('ID=%d Text="%s" HWND=%p Pos=%s Class=%s',
+  Result := Format(
+    'ID=%d Text="%s" HWND=%p Pos=%s Class=%s',
     [ID, txt, Pointer(h), RectToStr(R), cls]);
 end;
 
@@ -1525,6 +1694,7 @@ begin
         KeyPos := KeyPos + 1
       else
         KeyPos := 1;
+
       SrcAsc := SrcAsc xor Ord(Key[KeyPos]);
       dest := dest + Format('%1.2x', [SrcAsc]);
       offset := SrcAsc;
@@ -1538,15 +1708,19 @@ begin
 
     repeat
       SrcAsc := StrToInt('$' + Copy(Src, SrcPos, 2));
+
       if KeyPos < KeyLen then
         KeyPos := KeyPos + 1
       else
         KeyPos := 1;
+
       TmpSrcAsc := SrcAsc xor Ord(Key[KeyPos]);
+
       if TmpSrcAsc <= offset then
         TmpSrcAsc := 255 + TmpSrcAsc - offset
       else
         TmpSrcAsc := TmpSrcAsc - offset;
+
       dest := dest + chr(TmpSrcAsc);
       offset := SrcAsc;
       SrcPos := SrcPos + 2;
@@ -1668,8 +1842,7 @@ begin
   if h <> 0 then
     Exit(h);
 
-  raise Exception.CreateFmt('Window not found (dialog/top/class): "%s"',
-    [TitleOrClass]);
+  raise Exception.CreateFmt('Window not found (dialog/top/class): "%s"', [TitleOrClass]);
 end;
 
 function FindDescendantByTextOrClass(Parent: HWND; const Token: string): HWND;
@@ -1807,10 +1980,14 @@ end;
 { =================== Instance helpers =================== }
 
 procedure TForm1.FormCreate(Sender: TObject);
+var
+  RunScriptProc: TThreadProcedure;
 begin
   FInspectorOverlay := TInspectorOverlay.Create(nil);
   FHasInspectorPos := False;
+  FRecording := False;
   FScriptFilename := '';
+  GRecorderForm := Self;
   FAliases := TStringList.Create;
   FAliases.CaseSensitive := False;
   FAliases.StrictDelimiter := True;
@@ -1825,11 +2002,12 @@ begin
     begin
       mmoScript.Lines.LoadFromFile(FScriptFilename);
 
-      TThread.Queue(nil,
+      RunScriptProc :=
         procedure
         begin
           btnGo.Click;
-        end);
+        end;
+      TThread.Queue(nil, RunScriptProc);
 
     end
     else
@@ -1839,6 +2017,10 @@ end;
 
 procedure TForm1.FormDestroy(Sender: TObject);
 begin
+  if FRecording then
+    SetRecording(False);
+
+  GRecorderForm := nil;
   FInspectorOverlay.Free;
   FAliases.Free;
 end;
@@ -1930,7 +2112,19 @@ begin
   FLastInspectorPos := pt;
   FHasInspectorPos := True;
 
+  if FInspectorOverlay.ContainsInfoAt(pt) then
+  begin
+    FInspectorOverlay.HideInfo;
+    Exit;
+  end;
+
   h := DeepChildWindowFromPoint(pt);
+  if (h = Handle) or IsChild(Handle, h) then
+  begin
+    FInspectorOverlay.HideInfo;
+    Exit;
+  end;
+
   S := DescribeWindow(h);
 
   // Show live info
@@ -1971,9 +2165,22 @@ end;
 procedure TForm1.btnSaveClick(Sender: TObject);
 var
   SL: TStringList;
+  dlg: TSaveDialog;
 begin
   if FScriptFilename = '' then
-    Exit; // should never happen if button is disabled correctly
+  begin
+    dlg := TSaveDialog.Create(Self);
+    try
+      dlg.Filter := 'Script files (*.script)|*.script|All files (*.*)|*.*';
+      dlg.DefaultExt := 'script';
+      dlg.Options := [ofPathMustExist, ofOverwritePrompt];
+      if not dlg.Execute then
+        Exit;
+      FScriptFilename := ChangeFileExt(dlg.FileName, '.script');
+    finally
+      dlg.Free;
+    end;
+  end;
 
   // mmoScript.Lines.SaveToFile(FScriptFilename); //this saves as rich (formatted) text
   SL := TStringList.Create;
@@ -1986,25 +2193,267 @@ begin
   end;
 end;
 
-procedure TForm1.LeftClickAt(ScreenX, ScreenY: Integer);
+procedure TForm1.MouseClickAt(ScreenX, ScreenY: Integer;
+  const Button: string);
 var
-  Inputs: array [0 .. 1] of TInput;
+  DownFlag, UpFlag: DWORD;
 begin
-
   SetCursorPos(ScreenX, ScreenY);
 
-  ZeroMemory(@Inputs, SizeOf(Inputs));
+  if SameText(Button, 'Right') then
+  begin
+    DownFlag := MOUSEEVENTF_RIGHTDOWN;
+    UpFlag := MOUSEEVENTF_RIGHTUP;
+  end
+  else if SameText(Button, 'Middle') then
+  begin
+    DownFlag := MOUSEEVENTF_MIDDLEDOWN;
+    UpFlag := MOUSEEVENTF_MIDDLEUP;
+  end
+  else
+  begin
+    DownFlag := MOUSEEVENTF_LEFTDOWN;
+    UpFlag := MOUSEEVENTF_LEFTUP;
+  end;
 
-  Inputs[0].Itype := INPUT_MOUSE;
-  Inputs[0].mi.dwFlags := MOUSEEVENTF_ABSOLUTE or MOUSEEVENTF_MOVE;
-  Inputs[0].mi.dx := MulDiv(ScreenX, 65535, GetSystemMetrics(SM_CXSCREEN) - 1);
-  Inputs[0].mi.dy := MulDiv(ScreenY, 65535, GetSystemMetrics(SM_CYSCREEN) - 1);
+  mouse_event(DownFlag, 0, 0, 0, 0);
+  mouse_event(UpFlag, 0, 0, 0, 0);
+end;
 
-  Inputs[1].Itype := INPUT_MOUSE;
-  Inputs[1].mi.dwFlags := MOUSEEVENTF_LEFTDOWN or MOUSEEVENTF_LEFTUP;
+procedure TForm1.ScrollMouseAt(ScreenX, ScreenY, Delta: Integer);
+begin
+  SetCursorPos(ScreenX, ScreenY);
+  mouse_event(MOUSEEVENTF_WHEEL, 0, 0, DWORD(Delta), 0);
+end;
 
-  // pass pointer to first element
-  SendInput(Length(Inputs), @Inputs[0], SizeOf(TInput));
+procedure TForm1.AppendRecordedCommand(const Command: string);
+begin
+  mmoScript.Lines.Add(Command);
+  lblStatus.Caption := 'Recording macro...';
+end;
+
+procedure TForm1.FlushRecordedText;
+begin
+  if FRecordedText = '' then
+    Exit;
+
+  AppendRecordedCommand('TypeText ' + QuoteScriptToken(FRecordedText));
+  FRecordedText := '';
+end;
+
+procedure TForm1.RecordMouseClick(ScreenX, ScreenY: Integer;
+  const Button: string);
+var
+  Control, Root: HWND;
+  WindowName, ButtonName: string;
+  ScreenPoint: TPoint;
+begin
+  ScreenPoint.X := ScreenX;
+  ScreenPoint.Y := ScreenY;
+  Control := DeepChildWindowFromPoint(ScreenPoint);
+  ButtonName := GetWindowTextSafe(Control);
+  Root := GetTopLevelWindow(Control);
+  WindowName := GetWindowTextSafe(Root);
+
+  if SameText(Button, 'Left') and IsClassIn(Control, BUTTON_CLASS_NAMES) and (ButtonName <> '') and (WindowName <> '') then
+    AppendRecordedCommand('ClickButton ' + QuoteScriptToken(WindowName) + ' ' + QuoteScriptToken(ButtonName))
+  else
+    AppendRecordedCommand(Format(
+      'MouseClick %d %d %s',
+      [ScreenX, ScreenY, Button]));
+end;
+
+procedure TForm1.SetRecording(Value: Boolean);
+var
+  UnhookFailed: Boolean;
+  ErrorCode: DWORD;
+begin
+  if Value = FRecording then
+    Exit;
+
+  if Value then
+  begin
+    FillChar(GRecordedKeys, SizeOf(GRecordedKeys), 0);
+    FRecordedText := '';
+    GKeyboardRecordHook := SetWindowsHookEx(WH_KEYBOARD_LL,
+      @LowLevelKeyboardRecordProc, HInstance, 0);
+    if GKeyboardRecordHook = 0 then
+      RaiseLastOSError;
+
+    GMouseRecordHook := SetWindowsHookEx(WH_MOUSE_LL,
+      @LowLevelMouseRecordProc, HInstance, 0);
+    if GMouseRecordHook = 0 then
+    begin
+      ErrorCode := GetLastError;
+      UnhookWindowsHookEx(GKeyboardRecordHook);
+      GKeyboardRecordHook := 0;
+      raise Exception.CreateFmt('Could not install the mouse recording hook: %s',
+        [SysErrorMessage(ErrorCode)]);
+    end;
+
+    FRecording := True;
+    btnRecord.Caption := 'Stop';
+    lblStatus.Caption := 'Recording macro...';
+    mmoScript.Lines.Add('; Recorded macro');
+  end
+  else
+  begin
+    FlushRecordedText;
+    FRecording := False;
+    UnhookFailed := False;
+    ErrorCode := 0;
+    if (GKeyboardRecordHook <> 0) and
+      not UnhookWindowsHookEx(GKeyboardRecordHook) then
+    begin
+      UnhookFailed := True;
+      ErrorCode := GetLastError;
+    end;
+    GKeyboardRecordHook := 0;
+    if (GMouseRecordHook <> 0) and
+      not UnhookWindowsHookEx(GMouseRecordHook) then
+    begin
+      if not UnhookFailed then
+        ErrorCode := GetLastError;
+      UnhookFailed := True;
+    end;
+    GMouseRecordHook := 0;
+    FillChar(GRecordedKeys, SizeOf(GRecordedKeys), 0);
+    btnRecord.Caption := 'Record';
+    lblStatus.Caption := 'Recording stopped';
+    Save1.Enabled := True;
+    if UnhookFailed then
+      raise Exception.CreateFmt(
+        'Could not remove an input recording hook: %s',
+        [SysErrorMessage(ErrorCode)]);
+  end;
+end;
+
+procedure TForm1.btnRecordClick(Sender: TObject);
+begin
+  SetRecording(not FRecording);
+end;
+
+procedure TForm1.RecordKey(VKCode, ScanCode: UINT);
+var
+  KeyName, Chord: string;
+  KeyChar: Char;
+  KeyboardState: TKeyboardState;
+  TextBuffer: array[0..1] of Char;
+  CharacterCount: Integer;
+  KeyboardLayout: HKL;
+begin
+  if (GetAsyncKeyState(VK_CONTROL) >= 0) and
+    (GetAsyncKeyState(VK_MENU) >= 0) and
+    (GetAsyncKeyState(VK_LWIN) >= 0) and
+    (GetAsyncKeyState(VK_RWIN) >= 0) and
+    GetKeyboardState(KeyboardState) then
+  begin
+    if GetAsyncKeyState(VK_SHIFT) < 0 then
+      KeyboardState[VK_SHIFT] := KeyboardState[VK_SHIFT] or $80
+    else
+      KeyboardState[VK_SHIFT] := KeyboardState[VK_SHIFT] and $7F;
+    if VKCode <= High(KeyboardState) then
+      KeyboardState[VKCode] := KeyboardState[VKCode] or $80;
+
+    KeyboardLayout := GetKeyboardLayout(0);
+    CharacterCount := ToUnicodeEx(VKCode, ScanCode, @KeyboardState[0], PWideChar(@TextBuffer[0]), Length(TextBuffer), 0, KeyboardLayout);
+    if (CharacterCount = 1) and (Ord(TextBuffer[0]) >= 32) then
+    begin
+      FRecordedText := FRecordedText + TextBuffer[0];
+      Exit;
+    end;
+  end;
+
+  FlushRecordedText;
+  KeyName := '';
+  if (VKCode >= Ord('A')) and (VKCode <= Ord('Z')) then
+    KeyName := Char(VKCode)
+  else if (VKCode >= Ord('0')) and (VKCode <= Ord('9')) then
+    KeyName := Char(VKCode)
+  else if (VKCode >= VK_F1) and (VKCode <= VK_F24) then
+    KeyName := 'F' + IntToStr(VKCode - VK_F1 + 1)
+  else
+  begin
+    KeyChar := #0;
+    case VKCode of
+      VK_RETURN: KeyName := 'Enter';
+      VK_ESCAPE: KeyName := 'Esc';
+      VK_TAB: KeyName := 'Tab';
+      VK_BACK: KeyName := 'Backspace';
+      VK_SPACE: KeyName := 'Space';
+      VK_LEFT: KeyName := 'Left';
+      VK_RIGHT: KeyName := 'Right';
+      VK_UP: KeyName := 'Up';
+      VK_DOWN: KeyName := 'Down';
+      VK_INSERT: KeyName := 'Insert';
+      VK_DELETE: KeyName := 'Delete';
+      VK_HOME: KeyName := 'Home';
+      VK_END: KeyName := 'End';
+      VK_PRIOR: KeyName := 'PageUp';
+      VK_NEXT: KeyName := 'PageDown';
+      VK_SNAPSHOT: KeyName := 'PrintScreen';
+      VK_NUMLOCK: KeyName := 'NumLock';
+      VK_CAPITAL: KeyName := 'CapsLock';
+      VK_SCROLL: KeyName := 'ScrollLock';
+      VK_APPS: KeyName := 'Apps';
+      VK_NUMPAD0..VK_NUMPAD9: KeyName := 'Numpad' + IntToStr(VKCode - VK_NUMPAD0);
+      VK_ADD: KeyName := 'NumpadAdd';
+      VK_SUBTRACT: KeyName := 'NumpadSub';
+      VK_MULTIPLY: KeyName := 'NumpadMul';
+      VK_DIVIDE: KeyName := 'NumpadDiv';
+      VK_DECIMAL: KeyName := 'NumpadDec';
+      VK_OEM_1: KeyChar := ';';
+      VK_OEM_PLUS: KeyChar := '=';
+      VK_OEM_COMMA: KeyChar := ',';
+      VK_OEM_MINUS: KeyChar := '-';
+      VK_OEM_PERIOD: KeyChar := '.';
+      VK_OEM_2: KeyChar := '/';
+      VK_OEM_3: KeyChar := '`';
+      VK_OEM_4: KeyChar := '[';
+      VK_OEM_5, VK_OEM_102: KeyChar := '\';
+      VK_OEM_6: KeyChar := ']';
+      VK_OEM_7: KeyChar := '''';
+    end;
+
+    if KeyName = '' then
+    begin
+      if KeyChar = #0 then
+        Exit;
+      KeyName := KeyChar;
+    end;
+  end;
+
+  Chord := '';
+  if GetAsyncKeyState(VK_CONTROL) < 0 then
+    Chord := 'Ctrl';
+
+  if GetAsyncKeyState(VK_SHIFT) < 0 then
+  begin
+    if Chord <> '' then Chord := Chord + '+';
+    Chord := Chord + 'Shift';
+  end;
+
+  if GetAsyncKeyState(VK_MENU) < 0 then
+  begin
+    if Chord <> '' then Chord := Chord + '+';
+    Chord := Chord + 'Alt';
+  end;
+
+  if (GetAsyncKeyState(VK_LWIN) < 0) or (GetAsyncKeyState(VK_RWIN) < 0) then
+  begin
+    if Chord <> '' then Chord := Chord + '+';
+    Chord := Chord + 'Win';
+  end;
+
+  if Chord <> '' then
+    Chord := Chord + '+';
+
+  Chord := Chord + KeyName;
+
+  if KeyName.Contains(';') or KeyName.Contains('#') then
+    AppendRecordedCommand('PressKey "' + Chord + '"')
+  else
+    AppendRecordedCommand('PressKey ' + Chord);
 end;
 
 procedure TForm1.mmoScriptChange(Sender: TObject);
@@ -2016,10 +2465,12 @@ begin
     mmoLineNumbers.Lines.Add(IntToStr(i + 1));
 
   mmoLineNumbers.ScrollPosition := mmoScript.ScrollPosition;
-  if FScriptFilename <> '' then
-    Save1.Enabled := True;
+  Save1.Enabled := True;
 
-  lblStatus.Caption := 'Ready';
+  if FRecording then
+    lblStatus.Caption := 'Recording macro...'
+  else
+    lblStatus.Caption := 'Ready';
 end;
 
 procedure TForm1.mmoScriptKeyPress(Sender: TObject; var Key: Char);
@@ -2049,8 +2500,10 @@ begin
     SL.Add('    Clicks a button with known text. Use the title bar to get the name and value. For Dialog name, you can also use ID or HWND');
     SL.Add('  ClickElement <windowName> <elementName> or ClickElement <elementName>');
     SL.Add('    Clicks a named element. If you leave out the windowName, it will default to what is in the "Default window name" box e.g. PointOfSale');
-    SL.Add('  MouseClick X Y');
-    SL.Add('    Left clicks the mouse at the specified coords. Use this as a last resort when ClickButton and ClickElement dont work');
+    SL.Add('  MouseClick <x> <y> [Left|Right|Middle]');
+    SL.Add('    Clicks the specified mouse button at the screen coordinates. Left is the default.');
+    SL.Add('  MouseWheel <x> <y> <delta>');
+    SL.Add('    Scrolls the mouse wheel at the screen coordinates by the specified delta.');
     SL.Add('');
     SL.Add('  SetText <dialogName> <controlName> <value>');
     SL.Add('    Writes some text into an input box. The control name does not need to be the actual name of the control, it can be the label next to the control');
@@ -2134,26 +2587,24 @@ begin
     if Length(parts) = 0 then
       Continue;
 
-    lblStatus.Caption :=
-      Format('Running %s:%d → %s',
-        [SourceName, lineNumber + 1, Line]);
+    lblStatus.Caption := Format(
+      'Running %s:%d → %s',
+      [SourceName, lineNumber + 1, Line]);
 
     Application.ProcessMessages;
 
     // ---- COMMAND DISPATCH ----
-    mmoLineNumbers.Lines[lineNumber] :=
-      Format('%s %d', [RUNNING, lineNumber + 1]);
+    mmoLineNumbers.Lines[lineNumber] := Format('%s %d', [RUNNING, lineNumber + 1]);
 
     if ExecuteCommand(parts, lineNumber, SourceName) then
-      mmoLineNumbers.Lines[lineNumber] :=
-        Format('%s %d', [COMPLETED, lineNumber + 1])
+      mmoLineNumbers.Lines[lineNumber] := Format('%s %d', [COMPLETED, lineNumber + 1])
     else
     begin
-      mmoLineNumbers.Lines[lineNumber] :=
-        Format('%s %d', [ERROR, lineNumber + 1]);
+      mmoLineNumbers.Lines[lineNumber] := Format('%s %d', [ERROR, lineNumber + 1]);
       lblStatus.Caption := 'Completed with error';
       Application.ProcessMessages;
-      ShowTextDialog('Error', Format('Error on line %d. Command in %s failed.' + CRLF + '%s',
+      ShowTextDialog('Error', Format(
+        'Error on line %d. Command in %s failed.' + CRLF + '%s',
         [lineNumber, SourceName, Line]));
       Exit;
     end;
@@ -2299,6 +2750,8 @@ begin
   bOK := False;
   Result := bOK;
 
+  //TODO: change this to a switch statement for better readability
+
   if SameText(parts[0], 'DumpWindow') then
   begin
     // DumpWindow <WindowCaptionOrClass>
@@ -2311,8 +2764,8 @@ begin
       if (ShowEditsOrChildrenFor(ResolveAlias(parts[1]), 'DumpWindow')) then
         bOK := True
     else
-      raise Exception.CreateFmt
-        ('Error on line %d. DumpWindow usage: DumpWindow <windowCaptionOrClass>',
+      raise Exception.CreateFmt(
+        'Error on line %d. DumpWindow usage: DumpWindow <windowCaptionOrClass>',
         [lineNumber + 1]);
   end
 
@@ -2328,8 +2781,8 @@ begin
 
       if Btn = 0 then
       begin
-        ShowTextDialog('Error',
-          Format('Error on line %d. Button "%s" not found in "%s".' + CRLF + CRLF + '%s',
+        ShowTextDialog('Error', Format(
+          'Error on line %d. Button "%s" not found in "%s".' + CRLF + CRLF + '%s',
           [lineNumber + 1, Token, defaultWindowName.Text, FormatButtonsSummary(W)]), 500, 200);
       end
       else
@@ -2346,8 +2799,8 @@ begin
 
       if Btn = 0 then
       begin
-        ShowTextDialog('Error',
-          Format('Error on line %d. Button "%s" not found in "%s".' + CRLF + CRLF + '%s',
+        ShowTextDialog('Error', Format(
+          'Error on line %d. Button "%s" not found in "%s".' + CRLF + CRLF + '%s',
           [lineNumber + 1, Token, defaultWindowName.Text, FormatButtonsSummary(W)]), 500, 200);
       end
       else
@@ -2357,8 +2810,8 @@ begin
       end;
     end
     else
-      raise Exception.CreateFmt
-        ('Error on line %d. ClickButton usage: ClickButton <caption|name>  OR  ClickButton <window> <caption|name>',
+      raise Exception.CreateFmt(
+        'Error on line %d. ClickButton usage: ClickButton <caption|name>  OR  ClickButton <window> <caption|name>',
         [lineNumber + 1]);
   end
 
@@ -2390,12 +2843,31 @@ begin
 
   else if SameText(parts[0], 'MouseClick') then
   begin
-    if Length(parts) <> 3 then
-      raise Exception.CreateFmt
-        ('Error on line %d. MouseClick usage: MouseClick <x> <y>',
+    if (Length(parts) <> 3) and (Length(parts) <> 4) then
+      raise Exception.CreateFmt(
+        'Error on line %d. MouseClick usage: MouseClick <x> <y> [Left|Right|Middle]',
         [lineNumber + 1]);
 
-    LeftClickAt(StrToInt(parts[1]), StrToInt(parts[2]));
+    if Length(parts) = 3 then
+      MouseClickAt(StrToInt(parts[1]), StrToInt(parts[2]), 'Left')
+    else if SameText(parts[3], 'Left') or SameText(parts[3], 'Right') or SameText(parts[3], 'Middle') then
+      MouseClickAt(StrToInt(parts[1]), StrToInt(parts[2]), parts[3])
+    else
+      raise Exception.CreateFmt(
+        'Error on line %d. Unknown mouse button "%s".',
+        [lineNumber + 1, parts[3]]);
+
+    bOK := True;
+  end
+
+  else if SameText(parts[0], 'MouseWheel') then
+  begin
+    if Length(parts) <> 4 then
+      raise Exception.CreateFmt(
+        'Error on line %d. MouseWheel usage: MouseWheel <x> <y> <delta>',
+        [lineNumber + 1]);
+
+    ScrollMouseAt(StrToInt(parts[1]), StrToInt(parts[2]), StrToInt(parts[3]));
     bOK := True;
   end
 
@@ -2406,8 +2878,8 @@ begin
     // 2) SetText <Window> <Name|Index|ID:nnn|HWND:hex> <text>
 
     if Length(parts) < 3 then
-      raise Exception.CreateFmt('Error on line %d. SetText usage:' + CRLF +
-        '  SetText <Name|Index|ID:nnn|HWND:hex> <text>' + CRLF + '  SetText <window> <Name|Index|ID:nnn|HWND:hex> <text>',
+      raise Exception.CreateFmt(
+        'Error on line %d. SetText usage:' + CRLF + '  SetText <Name|Index|ID:nnn|HWND:hex> <text>' + CRLF + '  SetText <window> <Name|Index|ID:nnn|HWND:hex> <text>',
         [lineNumber + 1]);
 
     if Length(parts) = 3 then
@@ -2460,8 +2932,8 @@ begin
   else if SameText(parts[0], 'Close') then
   begin
     if Length(parts) <> 2 then
-      raise Exception.CreateFmt
-        ('Error on line %d. Close usage: Close <window name>',
+      raise Exception.CreateFmt(
+        'Error on line %d. Close usage: Close <window name>',
         [lineNumber + 1]);
 
     CloseWindowByCaption(ResolveAlias(parts[1]));
@@ -2471,8 +2943,8 @@ begin
   else if SameText(parts[0], 'TypeText') then
   begin
     if Length(parts) <> 2 then
-      raise Exception.CreateFmt
-        ('Error on line %d. TypeText usage: TypeText "some text"',
+      raise Exception.CreateFmt(
+        'Error on line %d. TypeText usage: TypeText "some text"',
         [lineNumber + 1]);
 
     TypeText(parts[1]);
@@ -2482,8 +2954,8 @@ begin
   else if SameText(parts[0], 'TypePassword') then
   begin
     if ((Length(parts) <> 2) and (Length(parts) <> 4)) then
-      raise Exception.CreateFmt
-        ('Error on line %d. TypePassword usage: TypePassword "some encrypted text" | TypePassword "form|dialog" "control" "some encrypted text"',
+      raise Exception.CreateFmt(
+        'Error on line %d. TypePassword usage: TypePassword "some encrypted text" | TypePassword "form|dialog" "control" "some encrypted text"',
         [lineNumber + 1]);
 
     if length(parts) = 2 then
@@ -2500,8 +2972,8 @@ begin
 
       if E = 0 then
       begin
-        ShowTextDialog('Error',
-          Format('Error on line %d. No Edit control matched "%s" in dialog "%s".' + CRLF + CRLF + '%s',
+        ShowTextDialog('Error', Format(
+          'Error on line %d. No Edit control matched "%s" in dialog "%s".' + CRLF + CRLF + '%s',
           [lineNumber + 1, FieldToken, WindowToken, FormatEditsSummary(W)]), 500, 200);
       end
       else
@@ -2528,8 +3000,8 @@ begin
     // PressKey Shift+Tab
     // PressKey "Ctrl+Shift+ ="
     if Length(parts) <> 2 then
-      raise Exception.CreateFmt
-        ('Error on line %d. PressKey usage: PressKey <key-or-chord>. e.g. PressKey A, PressKey Ctrl+Alt+F4, etc',
+      raise Exception.CreateFmt(
+        'Error on line %d. PressKey usage: PressKey <key-or-chord>. e.g. PressKey A, PressKey Ctrl+Alt+F4, etc',
         [lineNumber + 1]);
 
     try
@@ -2537,7 +3009,8 @@ begin
       bOK := True;
     except
       on E: Exception do
-        raise Exception.CreateFmt('Error on line %d. PressKey failed: %s',
+        raise Exception.CreateFmt(
+          'Error on line %d. PressKey failed: %s',
           [lineNumber + 1, E.Message]);
     end;
   end
@@ -2599,7 +3072,8 @@ begin
   else if SameText(parts[0], 'Load') then
   begin
     if Length(parts) <> 2 then
-      raise Exception.CreateFmt('%s:%d Load <scriptName>',
+      raise Exception.CreateFmt(
+        '%s:%d Load <scriptName>',
         [SourceName, lineNumber + 1]);
 
     ScriptName := parts[1];
@@ -2707,8 +3181,9 @@ begin
 
   else
   begin
-    raise Exception.CreateFmt('%s:%d Unknown command "%s"',
-       [SourceName, lineNumber + 1, parts[0]]);
+    raise Exception.CreateFmt(
+      '%s:%d Unknown command "%s"',
+      [SourceName, lineNumber + 1, parts[0]]);
   end;
 
   Result := bOK;

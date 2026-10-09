@@ -5,13 +5,15 @@ It has the following features:
 - Can type text into fields
 - Rudimentary scripting
 - Can load/save to script files
+- Can record buttons, mouse clicks, wheel scrolling, typed text, and keyboard shortcuts as scripts
 - Can automatically run a script via command line arguments
 - Comments
 
 It can perform the following tasks:
 - ClickButton
 - ClickElement
-- MouseClick X Y
+- MouseClick <x> <y> [Left|Right|Middle]
+- MouseWheel <x> <y> <delta>
 - SetText <dialogName> <controlName> <value>
 - PressKey <keyName>
 - TypeText <text>
@@ -27,3 +29,7 @@ It can perform the following tasks:
 - DumpHere
 
 In the program, use Help > Reference to get a list of commands and an explanation of usage
+
+Use the Record button to start capturing input and Stop to finish. The recorded
+commands appear in the script editor; use File > Save to save them as a `.script`
+file.
