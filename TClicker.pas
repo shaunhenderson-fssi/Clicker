@@ -229,6 +229,7 @@ const
   TreeScope_Element = $0001;
   TreeScope_Children = $0002;
   TreeScope_Descendants = $0004;
+  MOUSE_POINT_ALIAS_PREFIX = '#MousePoint:';
   CLSID_CUIAutomation: TGUID = '{FF48DBA4-60EF-4201-AA87-54103EEF594E}';
   IID_IUIAutomation: TGUID = '{30CBE57D-D9D0-452A-AB13-7AC5AC4825EE}';
   IID_IUIAutomationElement: TGUID = '{D22108AA-8AC5-49A5-837B-37BBB3D7591E}';
@@ -1352,6 +1353,30 @@ begin
     Result := Token;
 end;
 
+function TryResolveMousePointAlias(const Token: string;
+  out ScreenX, ScreenY: Integer): Boolean;
+var
+  AliasValue, Coordinates: string;
+  Parts: TArray<string>;
+begin
+  Result := False;
+  if FAliases.IndexOfName(Token) < 0 then
+    Exit;
+
+  AliasValue := FAliases.Values[Token];
+  if not AliasValue.StartsWith(MOUSE_POINT_ALIAS_PREFIX) then
+    Exit;
+
+  Coordinates := Copy(AliasValue, Length(MOUSE_POINT_ALIAS_PREFIX) + 1,
+    MaxInt);
+  Parts := Coordinates.Split([',']);
+  if Length(Parts) <> 2 then
+    Exit;
+
+  Result := TryStrToInt(Parts[0], ScreenX) and
+    TryStrToInt(Parts[1], ScreenY);
+end;
+
 function IsEditLike(h: HWND): Boolean;
 begin
   // Reuse edit-like classes
@@ -1596,6 +1621,7 @@ var
   ID: LongInt;
 begin
   Result := TStringList.Create;
+  Result.Add(Format('Mouse: X=%d  Y=%d', [Pt.X, Pt.Y]));
   if h = 0 then
   begin
     Result.Add('No object under cursor');
@@ -2547,7 +2573,7 @@ begin
     SL.Add('    Clicks a button with known text. Use the title bar to get the name and value. For Dialog name, you can also use ID or HWND');
     SL.Add('  ClickElement <windowName> <elementName> or ClickElement <elementName>');
     SL.Add('    Clicks a named element. If you leave out the windowName, it will default to what is in the "Default window name" box e.g. PointOfSale');
-    SL.Add('  MouseClick <x> <y> [Left|Right|Middle]');
+    SL.Add('  MouseClick <x> <y> [Left|Right|Middle] or MouseClick <coordinateAlias> [Left|Right|Middle]');
     SL.Add('    Clicks the specified mouse button at the screen coordinates. Left is the default.');
     SL.Add('  MouseWheel <x> <y> <delta>');
     SL.Add('    Scrolls the mouse wheel at the screen coordinates by the specified delta.');
@@ -2570,8 +2596,8 @@ begin
     SL.Add('    Sets the default time (in ms) between commands, the default is 100 ms');
     SL.Add('  Sleep <milliseconds>');
     SL.Add('    Pauses execution, default is 1 second. Also see the "Default pause time" at the top of the window');
-    SL.Add('  Alias <name> <value>');
-    SL.Add('    Allows to set an alias e.g. instead of using a control ID which might change, use an alias then only change it in one place');
+    SL.Add('  Alias <name> <value> or Alias <name> <x> <y>');
+    SL.Add('    Defines a reusable value or screen-coordinate alias, e.g. Alias zero 839 636 then MouseClick zero');
     SL.Add('  If <"Button"|"Edit"> <WindowName> <name|id|hwnd> "Expected text"');
     SL.Add('    Similar to an assert function. The script will continue only when the expected text is found. There is no "else" function');
     SL.Add('    If WindowName is omitted, it will default to what is in the default window box');
@@ -2890,19 +2916,46 @@ begin
 
   else if SameText(parts[0], 'MouseClick') then
   begin
-    if (Length(parts) <> 3) and (Length(parts) <> 4) then
-      raise Exception.CreateFmt(
-        'Error on line %d. MouseClick usage: MouseClick <x> <y> [Left|Right|Middle]',
-        [lineNumber + 1]);
+    var ScreenX, ScreenY: Integer;
+    var Button: string;
 
-    if Length(parts) = 3 then
-      MouseClickAt(StrToInt(parts[1]), StrToInt(parts[2]), 'Left')
-    else if SameText(parts[3], 'Left') or SameText(parts[3], 'Right') or SameText(parts[3], 'Middle') then
-      MouseClickAt(StrToInt(parts[1]), StrToInt(parts[2]), parts[3])
-    else
+    if (Length(parts) = 2) or
+      ((Length(parts) = 3) and TryResolveMousePointAlias(parts[1], ScreenX, ScreenY)) then
+    begin
+      if Length(parts) = 2 then
+      begin
+        if not TryResolveMousePointAlias(parts[1], ScreenX, ScreenY) then
+          raise Exception.CreateFmt(
+            'Error on line %d. "%s" is not a coordinate alias. Define it with Alias <name> <x> <y>.',
+            [lineNumber + 1, parts[1]]);
+        Button := 'Left';
+      end
+      else
+        Button := parts[2];
+
+      if not (SameText(Button, 'Left') or SameText(Button, 'Right') or
+        SameText(Button, 'Middle')) then
+        raise Exception.CreateFmt(
+          'Error on line %d. Unknown mouse button "%s".',
+          [lineNumber + 1, Button]);
+
+      MouseClickAt(ScreenX, ScreenY, Button);
+    end
+    else if (Length(parts) <> 3) and (Length(parts) <> 4) then
       raise Exception.CreateFmt(
-        'Error on line %d. Unknown mouse button "%s".',
-        [lineNumber + 1, parts[3]]);
+        'Error on line %d. MouseClick usage: MouseClick <x> <y> [Left|Right|Middle] or MouseClick <coordinateAlias> [Left|Right|Middle]',
+        [lineNumber + 1])
+    else
+    begin
+      if Length(parts) = 3 then
+        MouseClickAt(StrToInt(parts[1]), StrToInt(parts[2]), 'Left')
+      else if SameText(parts[3], 'Left') or SameText(parts[3], 'Right') or SameText(parts[3], 'Middle') then
+        MouseClickAt(StrToInt(parts[1]), StrToInt(parts[2]), parts[3])
+      else
+        raise Exception.CreateFmt(
+          'Error on line %d. Unknown mouse button "%s".',
+          [lineNumber + 1, parts[3]]);
+    end;
 
     bOK := True;
   end
@@ -3207,14 +3260,29 @@ begin
   begin
     // Usage:
     // Alias <name> <value>
+    // Alias <name> <x> <y>
 
-    if Length(parts) <> 3 then
+    if (Length(parts) <> 3) and (Length(parts) <> 4) then
       raise Exception.CreateFmt(
-        '%s:%d Alias usage: Alias <name> <value>',
+        '%s:%d Alias usage: Alias <name> <value> or Alias <name> <x> <y>',
         [SourceName, lineNumber + 1]);
 
     var AliasName := parts[1];
-    var AliasValue := parts[2];
+    var AliasValue: string;
+    if Length(parts) = 3 then
+      AliasValue := parts[2]
+    else
+    begin
+      var ScreenX, ScreenY: Integer;
+      if not TryStrToInt(parts[2], ScreenX) or
+        not TryStrToInt(parts[3], ScreenY) then
+        raise Exception.CreateFmt(
+          '%s:%d Coordinate alias "%s" requires integer X and Y coordinates',
+          [SourceName, lineNumber + 1, AliasName]);
+
+      AliasValue := Format('%s%d,%d',
+        [MOUSE_POINT_ALIAS_PREFIX, ScreenX, ScreenY]);
+    end;
 
     // Prevent accidental overwrite
     if FAliases.IndexOfName(AliasName) >= 0 then
