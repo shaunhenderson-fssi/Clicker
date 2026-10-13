@@ -675,6 +675,32 @@ begin
   Result := ctx.List;
 end;
 
+function GetControlWindowText(h: HWND): string;
+var
+  Txt: array[0..1023] of Char;
+  TextLength: Integer;
+  MessageResult: DWORD_PTR;
+begin
+  Result := '';
+  if h = 0 then
+    Exit;
+
+  TextLength := GetWindowText(h, Txt, Length(Txt));
+  if TextLength = 0 then
+  begin
+    ZeroMemory(@Txt, SizeOf(Txt));
+    MessageResult := 0;
+    if SendMessageTimeout(h, WM_GETTEXT, Length(Txt), LPARAM(@Txt[0]),
+      SMTO_ABORTIFHUNG, 200, @MessageResult) = 0 then
+      Exit;
+
+    TextLength := Integer(MessageResult);
+  end;
+
+  if TextLength > 0 then
+    SetString(Result, Txt, Min(TextLength, Length(Txt) - 1));
+end;
+
 function GetWndClassName(HWND: HWND): string;
 var
   Buf: array [0 .. 255] of Char;
@@ -729,11 +755,12 @@ end;
 function EnumFindButtonByCaptionProc(h: HWND; lParam: LPARAM): BOOL; stdcall;
 var
   ctx: PEnumButtonsCtx;
-  TextBuf: array[0..255] of Char;
+  TextBuf: string;
 begin
   ctx := PEnumButtonsCtx(lParam);
 
-  if GetWindowText(h, TextBuf, Length(TextBuf)) > 0 then
+  TextBuf := GetControlWindowText(h);
+  if TextBuf <> '' then
   begin
     if SameText(TextBuf, ctx^.Caption) then
     begin
@@ -748,11 +775,10 @@ end;
 function EnumCollectButtonsProc(HWND: HWND; lParam: lParam): BOOL; stdcall;
 var
   ctx: PEnumListCtx;
-  t: array [0 .. 255] of Char;
 begin
   ctx := PEnumListCtx(lParam);
 
-  if IsClassIn(HWND, BUTTON_CLASS_NAMES) or (GetWindowText(HWND, t, Length(t)) > 0) then
+  if IsClassIn(HWND, BUTTON_CLASS_NAMES) or (GetControlWindowText(HWND) <> '') then
   begin
     SetLength(ctx^.List, Length(ctx^.List) + 1);
     ctx^.List[High(ctx^.List)] := HWND;
@@ -775,7 +801,7 @@ var
   Btns: TArray<HWND>;
   S: TStringBuilder;
   R: TRect;
-  t: array [0 .. 255] of Char;
+  t: string;
   cls: string;
   ID, j: Integer;
 begin
@@ -788,7 +814,7 @@ begin
     j := 0;
     for var i := 0 to High(Btns) do
     begin
-      GetWindowText(Btns[i], t, Length(t));
+      t := GetControlWindowText(Btns[i]);
       GetWindowRect(Btns[i], R);
       cls := GetWndClassName(Btns[i]);
 
@@ -987,15 +1013,15 @@ end;
 function EnumFindByCaption(h: HWND; lParam: LPARAM): BOOL; stdcall;
 var
   Ctx: PFindCaptionCtx;
-  Txt: array[0..255] of Char;
+  Txt: string;
 begin
   Ctx := PFindCaptionCtx(lParam);
 
   if not ClassAllowed(h, Ctx^.Classes, Ctx^.ClassCount) then
     Exit(True);
 
-  if (GetWindowText(h, Txt, Length(Txt)) > 0) and
-     SameText(Txt, Ctx^.Wanted) then
+  Txt := GetControlWindowText(h);
+  if (Txt <> '') and SameText(Txt, Ctx^.Wanted) then
   begin
     Inc(Ctx^.Count);
     Ctx^.Found := h;
@@ -1434,17 +1460,8 @@ begin
 end;
 
 function GetWindowTextSafe(h: HWND): string;
-var
-  Len: Integer;
 begin
-  Result := '';
-  if h = 0 then Exit;
-
-  Len := GetWindowTextLength(h);
-  if Len <= 0 then Exit;
-
-  SetLength(Result, Len);
-  GetWindowText(h, PChar(Result), Len + 1);
+  Result := GetControlWindowText(h);
 end;
 
 function GetCaptionAtPoint(const pt: TPoint): string;
