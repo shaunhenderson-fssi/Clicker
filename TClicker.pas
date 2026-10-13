@@ -2590,7 +2590,7 @@ begin
     SL.Add('    Types in a password using TypeText. Use the Help > Encryption menu to encrypt text. This allows using passwords in script files.');
     SL.Add('    Tip: if using the short form, use MouseClick before this so the mouse can focus on the control');
     SL.Add('  Load <filename>');
-    SL.Add('    Opens a script from "C:\Scripts\<filename>.script", this is similar to a procedure e.g. can have a "login" script, then call it');
+    SL.Add('    Loads a script relative to the current script folder, the Clicker.exe folder, or C:\Scripts (in that order). The .script extension is optional.');
     SL.Add('');
     SL.Add('  SetPause <time>');
     SL.Add('    Sets the default time (in ms) between commands, the default is 100 ms');
@@ -2738,7 +2738,43 @@ begin
   Result := FindEditNearLabel(W, Token);
 end;
 
-procedure ExpandLoadCommands(Lines: TStringList);
+function ResolveScriptPath(const ScriptName, ParentScriptPath: string): string;
+var
+  FileName: string;
+  SearchDirectories: TArray<string>;
+  Candidate: string;
+begin
+  FileName := ScriptName;
+  if ExtractFileExt(FileName) = '' then
+    FileName := FileName + '.script';
+
+  if (ExtractFileDrive(FileName) <> '') or
+    ((FileName <> '') and (FileName[1] = PathDelim)) then
+  begin
+    if FileExists(FileName) then
+      Exit(ExpandFileName(FileName));
+    raise Exception.CreateFmt('Script not found: %s', [FileName]);
+  end;
+
+  if (ParentScriptPath <> '') and FileExists(ParentScriptPath) then
+    SearchDirectories := [ExtractFilePath(ExpandFileName(ParentScriptPath)),
+      ExtractFilePath(ParamStr(0)), 'C:\Scripts\']
+  else
+    SearchDirectories := [ExtractFilePath(ParamStr(0)), 'C:\Scripts\'];
+
+  for var Directory in SearchDirectories do
+  begin
+    Candidate := IncludeTrailingPathDelimiter(Directory) + FileName;
+    if FileExists(Candidate) then
+      Exit(ExpandFileName(Candidate));
+  end;
+
+  raise Exception.CreateFmt(
+    'Script "%s" not found. Searched the script folder, application folder, and C:\Scripts.',
+    [ScriptName]);
+end;
+
+procedure ExpandLoadCommands(Lines: TStringList; const SourceFileName: string);
 var
   i: Integer;
   Parts: TArray<string>;
@@ -2752,20 +2788,12 @@ begin
 
     if (Length(Parts) >= 2) and SameText(Parts[0], 'Load') then
     begin
-      LoadFile := Parts[1];
-
-      if not LoadFile.Contains('\') then
-        LoadFile := Format('C:\Scripts\%s.script', [LoadFile]);
-
-      if not FileExists(LoadFile) then
-        raise Exception.CreateFmt(
-          'Load failed on line %d: %s not found',
-          [i + 1, LoadFile]
-        );
+      LoadFile := ResolveScriptPath(Parts[1], SourceFileName);
 
       InsertLines := TStringList.Create;
       try
         InsertLines.LoadFromFile(LoadFile, TEncoding.UTF8);
+        ExpandLoadCommands(InsertLines, LoadFile);
 
         // Remove the "Load xxx" line
         Lines.Delete(i);
@@ -3177,7 +3205,7 @@ begin
         [SourceName, lineNumber + 1]);
 
     ScriptName := parts[1];
-    ScriptPath := Format('C:\Scripts\%s.script', [ScriptName]);
+    ScriptPath := ResolveScriptPath(ScriptName, SourceName);
 
     RunScriptFile(ScriptPath);  // RECURSION
     Exit;
@@ -3309,9 +3337,6 @@ procedure TForm1.RunScriptFile(FileName: string);
 var
   Lines: TStringList;
 begin
-  if not FileName.Contains('C:\Scripts') then
-    FileName := Format('C:\Scripts\%s.script', [FileName]);
-
   if not FileExists(FileName) then
     raise Exception.CreateFmt('Script not found: %s', [FileName]);
 
@@ -3337,7 +3362,7 @@ begin
     Script.Text := mmoScript.Text;
 
     // Expand all Load commands first
-    ExpandLoadCommands(Script);
+    ExpandLoadCommands(Script, FScriptFilename);
 
     // Optional: reflect expansion back into editor
     mmoScript.Text := Script.Text;

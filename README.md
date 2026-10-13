@@ -19,7 +19,7 @@ It can perform the following tasks:
 - PressKey <keyName>
 - TypeText <text>
 - TypePassword <encryptedText> or TypePassword <form|dialog> <field|control> <encryptedText>
-- Load <filename>
+- Load <filename> (searched relative to the current script, Clicker.exe, then C:\Scripts; `.script` extension is optional)
 - SetPause <time>
 - Sleep <milliseconds>
 - Alias <name> <value>
