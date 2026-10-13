@@ -136,6 +136,17 @@ object Form1: TForm1
       TabOrder = 1
       Text = '100'
     end
+    object chkHoverText: TCheckBox
+      Left = 500
+      Top = 8
+      Width = 100
+      Height = 17
+      Caption = 'Hover text'
+      Checked = True
+      State = cbChecked
+      TabOrder = 2
+      OnClick = chkHoverTextClick
+    end
   end
   object grpBottom: TGroupBox
     Left = 0

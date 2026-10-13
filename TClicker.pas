@@ -105,6 +105,7 @@ type
     Timer1: TTimer; // this is for when the mouse hovers over something
     grpMiddle: TGroupBox;
     lblStatus: TLabel;
+    chkHoverText: TCheckBox;
     GroupBox1: TGroupBox;
     GroupBox2: TGroupBox;
     mmoScript: TRichEdit;
@@ -123,6 +124,7 @@ type
 
     procedure btnGoClick(Sender: TObject);
     procedure btnRecordClick(Sender: TObject);
+    procedure chkHoverTextClick(Sender: TObject);
     procedure tmrInspectorTimer(Sender: TObject);
     procedure mmoScriptChange(Sender: TObject);
     procedure btnLoadClick(Sender: TObject);
@@ -2105,6 +2107,13 @@ var
   Details: TStringList;
 begin
   GetCursorPos(pt);
+  if not chkHoverText.Checked then
+  begin
+    FHasInspectorPos := False;
+    FInspectorOverlay.HideInfo;
+    Exit;
+  end;
+
   if FHasInspectorPos and (pt.X = FLastInspectorPos.X) and
     (pt.Y = FLastInspectorPos.Y) then
     Exit;
@@ -2137,6 +2146,16 @@ begin
     FInspectorOverlay.UpdateInspector(R, pt, Details);
   finally
     Details.Free;
+  end;
+end;
+
+procedure TForm1.chkHoverTextClick(Sender: TObject);
+begin
+  FHasInspectorPos := False;
+  if not chkHoverText.Checked then
+  begin
+    FInspectorOverlay.HideInfo;
+    //Caption := 'Clicker';
   end;
 end;
 
@@ -2247,6 +2266,7 @@ var
   Control, Root: HWND;
   WindowName, ButtonName: string;
   ScreenPoint: TPoint;
+  ControlRect: TRect;
 begin
   ScreenPoint.X := ScreenX;
   ScreenPoint.Y := ScreenY;
@@ -2258,9 +2278,19 @@ begin
   if SameText(Button, 'Left') and IsClassIn(Control, BUTTON_CLASS_NAMES) and (ButtonName <> '') and (WindowName <> '') then
     AppendRecordedCommand('ClickButton ' + QuoteScriptToken(WindowName) + ' ' + QuoteScriptToken(ButtonName))
   else
+  begin
+    if (Control <> 0) and GetWindowRect(Control, ControlRect) and
+      (ControlRect.Right > ControlRect.Left) and
+      (ControlRect.Bottom > ControlRect.Top) then
+    begin
+      ScreenX := (ControlRect.Left + ControlRect.Right) div 2;
+      ScreenY := (ControlRect.Top + ControlRect.Bottom) div 2;
+    end;
+
     AppendRecordedCommand(Format(
       'MouseClick %d %d %s',
       [ScreenX, ScreenY, Button]));
+  end;
 end;
 
 procedure TForm1.SetRecording(Value: Boolean);

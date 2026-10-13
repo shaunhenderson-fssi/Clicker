@@ -6,6 +6,7 @@ It has the following features:
 - Rudimentary scripting
 - Can load/save to script files
 - Can record buttons, mouse clicks, wheel scrolling, typed text, and keyboard shortcuts as scripts
+- Can toggle the live hover text inspector on or off
 - Can automatically run a script via command line arguments
 - Comments
 
