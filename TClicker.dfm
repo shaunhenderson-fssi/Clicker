@@ -3,8 +3,8 @@ object Form1: TForm1
   Top = 0
   AlphaBlendValue = 127
   Caption = 'Clicker'
-  ClientHeight = 600
-  ClientWidth = 1000
+  ClientHeight = 547
+  ClientWidth = 766
   Color = clBtnFace
   Font.Charset = DEFAULT_CHARSET
   Font.Color = clWindowText
@@ -89,10 +89,11 @@ object Form1: TForm1
   object grpTop: TGroupBox
     Left = 0
     Top = 0
-    Width = 1000
+    Width = 766
     Height = 33
     Align = alTop
     TabOrder = 0
+    ExplicitWidth = 1000
     object lblDefaultWindowName: TLabel
       Left = 3
       Top = 9
@@ -142,16 +143,14 @@ object Form1: TForm1
       Width = 100
       Height = 17
       Caption = 'Hover text'
-      Checked = True
-      State = cbChecked
       TabOrder = 2
       OnClick = chkHoverTextClick
     end
   end
   object grpBottom: TGroupBox
     Left = 0
-    Top = 551
-    Width = 1000
+    Top = 498
+    Width = 766
     Height = 49
     Margins.Left = 0
     Margins.Top = 0
@@ -159,13 +158,16 @@ object Form1: TForm1
     Margins.Bottom = 0
     Align = alBottom
     TabOrder = 2
+    ExplicitTop = 551
+    ExplicitWidth = 1000
     object GroupBox1: TGroupBox
       Left = 2
       Top = 17
-      Width = 822
+      Width = 588
       Height = 30
       Align = alClient
       TabOrder = 0
+      ExplicitWidth = 822
       object lblStatus: TLabel
         Left = 3
         Top = 8
@@ -181,12 +183,13 @@ object Form1: TForm1
       end
     end
     object GroupBox2: TGroupBox
-      Left = 824
+      Left = 590
       Top = 17
       Width = 174
       Height = 30
       Align = alRight
       TabOrder = 1
+      ExplicitLeft = 824
       object btnRecord: TButton
         Left = 6
         Top = 3
@@ -224,15 +227,17 @@ object Form1: TForm1
   object grpMiddle: TGroupBox
     Left = 0
     Top = 33
-    Width = 1000
-    Height = 518
+    Width = 766
+    Height = 465
     Align = alClient
     TabOrder = 1
+    ExplicitWidth = 1000
+    ExplicitHeight = 518
     object mmoScript: TRichEdit
       Left = 66
       Top = 17
-      Width = 932
-      Height = 499
+      Width = 698
+      Height = 446
       Align = alClient
       Font.Charset = ANSI_CHARSET
       Font.Color = clWindowText
@@ -246,12 +251,14 @@ object Form1: TForm1
       TabOrder = 0
       OnChange = mmoScriptChange
       OnKeyPress = mmoScriptKeyPress
+      ExplicitWidth = 932
+      ExplicitHeight = 499
     end
     object mmoLineNumbers: TRichEdit
       Left = 2
       Top = 17
       Width = 64
-      Height = 499
+      Height = 446
       Align = alLeft
       Alignment = taRightJustify
       Color = clSilver
@@ -266,6 +273,7 @@ object Form1: TForm1
       ReadOnly = True
       ScrollBars = ssVertical
       TabOrder = 1
+      ExplicitHeight = 499
     end
   end
   object Timer1: TTimer
