@@ -145,6 +145,7 @@ type
     FInspectorOverlay: TInspectorOverlay;
     FLastInspectorPos: TPoint;
     FHasInspectorPos: Boolean;
+
     procedure EncryptClick(Sender: TObject);
     procedure CloseWindowByCaption(const WindowTitle: string);
     procedure MouseClickAt(ScreenX, ScreenY: Integer; const Button: string);
@@ -153,8 +154,7 @@ type
     procedure SetRecording(Value: Boolean);
     procedure RecordKey(VKCode, ScanCode: UINT);
     procedure FlushRecordedText;
-    procedure RecordMouseClick(ScreenX, ScreenY: Integer;
-      const Button: string);
+    procedure RecordMouseClick(ScreenX, ScreenY: Integer; const Button: string);
     function SetEditText(Edit: HWND; const Value: string): Boolean;
     procedure RunScriptFile(FileName: string);
     procedure RunScriptLines(Lines: TStrings; const SourceName: string);
@@ -300,13 +300,25 @@ function LowLevelMouseRecordProc(nCode: Integer; wParam: WPARAM; lParam: LPARAM)
 function DeepChildWindowFromPoint(const PtScreen: TPoint): HWND; forward;
 function DescribeAtPoint(const PtScreen: TPoint): string; forward;
 
+/// <summary>
+/// Adds quotes around a string and escapes any internal quotes by doubling them.
+/// </summary>
+/// <param name="Value">String value supplied to this routine.</param>
+/// <returns>Same input value, but with quotes added and internal quotes escaped.</returns>
 function QuoteScriptToken(const Value: string): string;
 begin
   Result := '"' + Value.Replace('"', '""') + '"';
 end;
 
-function LowLevelKeyboardRecordProc(nCode: Integer; wParam: WPARAM;
-  lParam: LPARAM): LRESULT; stdcall;
+/// <summary>
+/// Uses the keyboard to type the specified text into the currently focused window, simulating key presses for each character.
+/// Reads the current keyboard layout to determine the correct virtual key codes and modifiers for each character.
+/// </summary>
+/// <param name="nCode">The action that was performed.</param>
+/// <param name="wParam">Whether the key was pressed or released.</param>
+/// <param name="lParam">The keyboard hook information.</param>
+/// <returns>The result of the operation.</returns>
+function LowLevelKeyboardRecordProc(nCode: Integer; wParam: WPARAM; lParam: LPARAM): LRESULT; stdcall;
 var
   KeyInfo: PMacroKeyboardHookInfo;
   VKCode: UINT;
@@ -336,8 +348,15 @@ begin
   Result := CallNextHookEx(GKeyboardRecordHook, nCode, wParam, lParam);
 end;
 
-function LowLevelMouseRecordProc(nCode: Integer; wParam: WPARAM;
-  lParam: LPARAM): LRESULT; stdcall;
+/// <summary>
+/// Uses the mouse to click at the specified screen coordinates, simulating a mouse click event.
+/// Reads the current mouse state to determine which button was pressed and whether it was a click or release.
+/// </summary>
+/// <param name="nCode">The action that was performed.</param>
+/// <param name="wParam">Whether the mouse button was pressed or released.</param>
+/// <param name="lParam">The mouse hook information.</param>
+/// <returns>The result of the operation.</returns>
+function LowLevelMouseRecordProc(nCode: Integer; wParam: WPARAM; lParam: LPARAM): LRESULT; stdcall;
 var
   MouseInfo: PMacroMouseHookInfo;
   WindowHandle: HWND;
@@ -390,6 +409,11 @@ begin
   Result := CallNextHookEx(GMouseRecordHook, nCode, wParam, lParam);
 end;
 
+/// <summary>
+/// Creates a new instance of the TInspectorOverlay form, which is a transparent overlay used to display information about UI elements under the mouse cursor.
+/// The overlay is configured to be borderless, stay on top of other windows, and use a specific font for displaying text.
+/// </summary>
+/// <param name="AOwner">The parent component.</param>
 constructor TInspectorOverlay.Create(AOwner: TComponent);
 begin
   inherited CreateNew(AOwner);
@@ -404,23 +428,41 @@ begin
   Font.Size := 9;
 end;
 
+/// <summary>
+/// Destroys the TInspectorOverlay instance, freeing any allocated resources such as the FInfoLines string list.
+/// </summary>
 destructor TInspectorOverlay.Destroy;
 begin
   FInfoLines.Free;
   inherited;
 end;
 
+/// <summary>
+/// Creates the window parameters for the TInspectorOverlay form, setting it to be transparent, a tool window, and not to activate when shown.
+/// This allows the overlay to display information without interfering with user interaction with other windows.
+/// </summary>
+/// <param name="Params">The parameters for the window creation.</param>
 procedure TInspectorOverlay.CreateParams(var Params: TCreateParams);
 begin
   inherited CreateParams(Params);
   Params.ExStyle := Params.ExStyle or WS_EX_TRANSPARENT or WS_EX_TOOLWINDOW or WS_EX_NOACTIVATE;
 end;
 
+/// <summary>
+/// Activates the TInspectorOverlay form in response to a mouse activation message,
+/// ensuring that it does not take focus away from other windows when the user interacts with it.
+/// </summary>
+/// <param name="Message">The mouse activation message.</param>
 procedure TInspectorOverlay.WMMouseActivate(var Message: TWMMouseActivate);
 begin
   Message.Result := MA_NOACTIVATE;
 end;
 
+/// <summary>
+/// Checks whether the specified screen position is within the bounds of the information rectangle displayed by the TInspectorOverlay.
+/// </summary>
+/// <param name="ScreenPos">The screen position to check.</param>
+/// <returns>True if the position is within the information rectangle; otherwise, False.</returns>
 function TInspectorOverlay.ContainsInfoAt(const ScreenPos: TPoint): Boolean;
 var
   ScreenInfoRect: TRect;
@@ -430,6 +472,9 @@ begin
   Result := PtInRect(ScreenInfoRect, ScreenPos);
 end;
 
+/// <summary>
+/// Hides the information displayed by the TInspectorOverlay.
+/// </summary>
 procedure TInspectorOverlay.HideInfo;
 begin
   if FInfoVisible then
@@ -439,6 +484,10 @@ begin
   end;
 end;
 
+/// <summary>
+/// Refreshes the display of the TInspectorOverlay, drawing a fuchsia background,
+/// a dotted red rectangle around the target area, and any informational text lines.
+/// </summary>
 procedure TInspectorOverlay.Paint;
 var
   I, TextY, XOffset, YOffset: Integer;
@@ -479,8 +528,10 @@ begin
   end;
 end;
 
-procedure TInspectorOverlay.UpdateInspector(const TargetRect: TRect;
-  const CursorPos: TPoint; const Lines: TStrings);
+/// <summary>
+/// Updates the TInspectorOverlay with new target rectangle, cursor position, and informational lines.
+/// </summary>
+procedure TInspectorOverlay.UpdateInspector(const TargetRect: TRect; const CursorPos: TPoint; const Lines: TStrings);
 var
   I, InfoWidth, InfoHeight, InfoLeft, InfoTop: Integer;
   VirtualLeft, VirtualTop, VirtualRight, VirtualBottom: Integer;
@@ -533,7 +584,11 @@ begin
 end;
 
 { =================== Unit-scope helpers =================== }
-
+/// <summary>
+/// Finds the top-level window with the specified title or class name.
+/// </summary>
+/// <param name="TitleOrClass">The title or class name to search for.</param>
+/// <returns>The handle of the found window, or 0 if not found.</returns>
 function FindTopWindowByTitleOrClass(const TitleOrClass: string): HWND;
 begin
   // Try caption first
@@ -545,6 +600,14 @@ begin
   Result := FindWindow(PChar(TitleOrClass), nil);
 end;
 
+/// <summary>
+/// Displays a modal dialog box with the specified title and text.
+/// </summary>
+/// <param name="Title">The title of the dialog box.</param>
+/// <param name="Text">The text to display in the dialog box.</param>
+/// <param name="Width">The width of the dialog box, default is 800.</param>
+/// <param name="Height">The height of the dialog box, default is 600.</param>
+/// <param name="ShowScrollbars">Indicates whether to show scrollbars in the text area, default is True.</param>
 procedure ShowTextDialog(const Title, Text: string; Width: Integer = 800; Height: Integer = 600; ShowScrollbars: Boolean = True);
 var
   F: TForm;
@@ -586,12 +649,23 @@ begin
   end;
 end;
 
+/// <summary>
+/// Converts a rectangle to a string representation.
+/// </summary>
+/// <param name="R">The rectangle to convert.</param>
+/// <returns>The string representation of the rectangle.</returns>
 function RectToStr(const R: TRect): string;
 begin
-  Result := Format('[%d %d]',
+  Result := Format(
+    '[%d %d]',
     [Round((R.Left + R.Right) / 2), Round((R.Top + R.Bottom) / 2)]);
 end;
 
+/// <summary>
+/// Formats the children of a window into a string representation.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <returns>A string containing information about the child windows.</returns>
 function FormatWindowChildren(Parent: HWND): string;
 var
   child: HWND;
@@ -634,6 +708,12 @@ begin
   end;
 end;
 
+/// <summary>
+/// Checks if the class name of a window matches any of the specified class names.
+/// </summary>
+/// <param name="AWnd">The window handle to check.</param>
+/// <param name="ClassNames">The array of class names to compare against.</param>
+/// <returns>True if the window's class name matches any of the specified names; otherwise, False.</returns>
 function IsClassIn(AWnd: HWND; const ClassNames: array of PChar): Boolean;
 var
   Buf: array [0 .. 255] of Char;
@@ -648,6 +728,12 @@ begin
       Exit(True);
 end;
 
+/// <summary>
+/// Enumerates child windows of a given parent window, collecting those that match "edit-like" classes into a list.
+/// </summary>
+/// <param name="HWND">The child window handle.</param>
+/// <param name="lParam">The context information.</param>
+/// <returns>True to continue enumeration; otherwise, False.</returns>
 function EnumChildProc(HWND: HWND; lParam: lParam): BOOL; stdcall;
 var
   ctx: PEnumEditsCtx;
@@ -666,6 +752,11 @@ begin
   Result := True;
 end;
 
+/// <summary>
+/// Enumerates all descendant windows of a given parent window, collecting those that match "edit-like" classes into an array.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <returns>An array of handles to the matching descendant windows.</returns>
 function GetAllDescendantEdits(Parent: HWND): TArray<HWND>;
 var
   ctx: TEnumEditsCtx;
@@ -676,6 +767,11 @@ begin
   Result := ctx.List;
 end;
 
+/// <summary>
+/// Retrieves the text of a control.
+/// </summary>
+/// <param name="h">The handle of the control.</param>
+/// <returns>The text of the control.</returns>
 function GetControlWindowText(h: HWND): string;
 var
   Txt: array[0..1023] of Char;
@@ -691,8 +787,7 @@ begin
   begin
     ZeroMemory(@Txt, SizeOf(Txt));
     MessageResult := 0;
-    if SendMessageTimeout(h, WM_GETTEXT, Length(Txt), LPARAM(@Txt[0]),
-      SMTO_ABORTIFHUNG, 200, @MessageResult) = 0 then
+    if SendMessageTimeout(h, WM_GETTEXT, Length(Txt), LPARAM(@Txt[0]), SMTO_ABORTIFHUNG, 200, @MessageResult) = 0 then
       Exit;
 
     TextLength := Integer(MessageResult);
@@ -702,6 +797,11 @@ begin
     SetString(Result, Txt, Min(TextLength, Length(Txt) - 1));
 end;
 
+/// <summary>
+/// Retrieves the class name of a window.
+/// </summary>
+/// <param name="HWND">The window handle.</param>
+/// <returns>The class name of the window.</returns>
 function GetWndClassName(HWND: HWND): string;
 var
   Buf: array [0 .. 255] of Char;
@@ -714,6 +814,11 @@ begin
     Result := '';
 end;
 
+/// <summary>
+/// Formats a summary of all descendant edit controls.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <returns>A string containing the summary of the edit controls.</returns>
 function FormatEditsSummary(Parent: HWND): string;
 var
   Edits: TArray<HWND>;
@@ -753,6 +858,12 @@ begin
   end;
 end;
 
+/// <summary>
+/// Finds a button control by its caption.
+/// </summary>
+/// <param name="h">The handle of the button control.</param>
+/// <param name="lParam">The context information.</param>
+/// <returns>True to continue enumeration; otherwise, False.</returns>
 function EnumFindButtonByCaptionProc(h: HWND; lParam: LPARAM): BOOL; stdcall;
 var
   ctx: PEnumButtonsCtx;
@@ -773,6 +884,12 @@ begin
   Result := True; // continue
 end;
 
+/// <summary>
+/// Enumerates child windows of a given parent window, collecting button-like controls into a list.
+/// </summary>
+/// <param name="HWND">The child window handle.</param>
+/// <param name="lParam">The context information.</param>
+/// <returns>True to continue enumeration; otherwise, False.</returns>
 function EnumCollectButtonsProc(HWND: HWND; lParam: lParam): BOOL; stdcall;
 var
   ctx: PEnumListCtx;
@@ -788,6 +905,11 @@ begin
   Result := True;
 end;
 
+/// <summary>
+/// Gets all descendant button-like controls of a given parent window, returning them as an array of handles.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <returns>An array of handles to the matching descendant windows.</returns>
 function GetAllDescendantButtons(Parent: HWND): TArray<HWND>;
 var
   ctx: TEnumListCtx;
@@ -797,6 +919,11 @@ begin
   Result := ctx.List;
 end;
 
+/// <summary>
+/// Formats a summary of all descendant button-like controls.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <returns>A string containing the summary of the button controls.</returns>
 function FormatButtonsSummary(Parent: HWND): string;
 var
   Btns: TArray<HWND>;
@@ -838,6 +965,10 @@ begin
   end;
 end;
 
+/// <summary>
+/// Shows a dialog with information about the immediate children and descendant edit/button controls of a specified window.
+/// </summary>
+/// <returns>True if the window was found and information was displayed; otherwise, False.</returns>
 function ShowEditsOrChildrenFor(const TitleOrClass,
   ContextMsg: string): Boolean;
 var
@@ -863,6 +994,11 @@ begin
   Result := True;
 end;
 
+/// <summary>
+/// Strips inline comments from a string.
+/// </summary>
+/// <param name="S">String to process</param>
+/// <returns>The result of S, with inline comments stripped out.</returns>
 function StripInlineComment(const S: string): string;
 var
   i: Integer;
@@ -900,6 +1036,11 @@ begin
   Result := Trim(S);
 end;
 
+/// <summary>
+/// Splits a string into tokens, respecting quoted substrings and ignoring inline comments.
+/// </summary>
+/// <param name="S">The string to tokenize.</param>
+/// <returns>An array of tokens.</returns>
 function Tokenize(const S: string): TArray<string>;
 var
   lineNoComment: string;
@@ -927,6 +1068,12 @@ begin
   end;
 end;
 
+/// <summary>
+/// Simulates a key press or release event for a specified virtual key code, optionally marking it as an extended key.
+/// </summary>
+/// <param name="VK">The virtual key code.</param>
+/// <param name="KeyDown">True to simulate a key press, False to simulate a key release.</param>
+/// <param name="Extended">True to mark the key as an extended key.</param>
 procedure SendInputKey(VK: UINT; KeyDown: Boolean; Extended: Boolean);
 var
   Inp: TInput;
@@ -944,6 +1091,11 @@ begin
   SendInput(1, @Inp, SizeOf(Inp));
 end;
 
+/// <summary>
+/// Determines whether a virtual key code represents an extended key.
+/// </summary>
+/// <param name="VK">The virtual key code.</param>
+/// <returns>True if the key is an extended key; otherwise, False.</returns>
 function IsExtendedVK(VK: UINT): Boolean;
 begin
   // Extended keys need KEYEVENTF_EXTENDEDKEY
@@ -957,7 +1109,10 @@ begin
     Result := False;
   end;
 end;
-
+/// <summary>
+/// Types a string of text by simulating key presses for each character, handling shift states as necessary.
+/// </summary>
+/// <param name="S">The string to type.</param>
 procedure TypeText(const S: string);
 var
   i: Integer;
@@ -987,6 +1142,13 @@ begin
   end;
 end;
 
+/// <summary>
+/// Determines whether a window's class is in a list of allowed classes.
+/// </summary>
+/// <param name="h">The window handle.</param>
+/// <param name="Classes">An array of allowed class names.</param>
+/// <param name="Count">The number of allowed classes.</param>
+/// <returns>True if the window's class is in the list; otherwise, False.</returns>
 function ClassAllowed(h: HWND; Classes: PPointer; Count: Integer): Boolean;
 type
   TPointerArray = array[0..MaxInt div SizeOf(Pointer) - 1] of Pointer;
@@ -1011,6 +1173,12 @@ begin
       Exit(True);
 end;
 
+/// <summary>
+/// Finds a child window by its caption, optionally filtering by allowed class names.
+/// </summary>
+/// <param name="h">The window handle.</param>
+/// <param name="lParam">The context information.</param>
+/// <returns>True to continue enumeration; otherwise, False.</returns>
 function EnumFindByCaption(h: HWND; lParam: LPARAM): BOOL; stdcall;
 var
   Ctx: PFindCaptionCtx;
@@ -1031,6 +1199,13 @@ begin
   Result := True;
 end;
 
+/// <summary>
+/// Finds a child window by its caption, optionally filtering by allowed class names.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <param name="Caption">The caption to search for.</param>
+/// <param name="AcceptedClasses">An array of allowed class names.</param>
+/// <returns>The handle of the found window, or 0 if not found.</returns>
 function FindByCaption(Parent: HWND; const Caption: string; const AcceptedClasses: array of PChar): HWND;
 var
   Ctx: TFindCaptionCtx;
@@ -1051,6 +1226,12 @@ begin
   Result := Ctx.Found;
 end;
 
+/// <summary>
+/// Attempts to parse a control ID token from a string.
+/// </summary>
+/// <param name="S">The string to parse.</param>
+/// <param name="ID">The parsed control ID.</param>
+/// <returns>True if the string was successfully parsed; otherwise, False.</returns>
 function TryParseControlIdToken(const S: string; out ID: Integer): Boolean;
 var
   t: string;
@@ -1063,7 +1244,13 @@ begin
   Result := TryStrToInt(t, ID);
 end;
 
-function EnumFindByIdProc(h: HWND; lParam: lParam): BOOL; stdcall;
+/// <summary>
+/// Finds a child window by its control ID.
+/// </summary>
+/// <param name="h">The window handle.</param>
+/// <param name="lParam">The context information.</param>
+/// <returns>True to continue enumeration; otherwise, False.</returns>
+function EnumFindByIdProc(h: HWND; lParam: LPARAM): BOOL; stdcall;
 var
   ctx: PFindByIdCtx;
 begin
@@ -1080,6 +1267,12 @@ begin
   Result := True;
 end;
 
+/// <summary>
+/// Finds a descendant window by its control ID.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <param name="CtrlId">The control ID to search for.</param>
+/// <returns>The handle of the found window, or 0 if not found.</returns>
 function FindDescendantByControlId(Parent: HWND; CtrlId: Integer): HWND;
 var
   ctx: TFindByIdCtx;
@@ -1093,11 +1286,24 @@ begin
   Result := ctx.Found;
 end;
 
+/// <summary>
+/// Finds a descendant window by its control ID.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <param name="ID">The control ID to search for.</param>
+/// <returns>The handle of the found window, or 0 if not found.</returns>
 function FindById(Parent: HWND; ID: Integer): HWND;
 begin
   Result := FindDescendantByControlId(Parent, ID);
 end;
 
+/// <summary>
+/// Tries to parse a string token representing a window handle (HWND) in various formats, such as "HWND:001A1CE4", "001A1CE4", "0x001A1CE4", or "$001A1CE4".
+/// It validates the format and checks if the resulting handle corresponds to an existing window.
+/// </summary>
+/// <param name="S">The string to parse.</param>
+/// <param name="h">The parsed window handle.</param>
+/// <returns>True if the string was successfully parsed; otherwise, False.</returns>
 function TryParseHWNDToken(const S: string; out h: HWND): Boolean;
 var
   t: string;
@@ -1127,6 +1333,16 @@ begin
   Result := (h <> 0) and IsWindow(h);
 end;
 
+/// <summary>
+/// Resolves a control within a parent window based on a token that can represent the control's caption, ID, or HWND.
+/// It searches for the control in the following order: by caption, by ID (if the token is in the form "ID:xxx" or a numeric value),
+/// and finally by HWND (if the token is in the form "HWND:xxxx" or similar). If the control is found, its handle is returned;
+/// otherwise, an exception is raised indicating that the control was not found.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <param name="Token">The token to resolve.</param>
+/// <param name="AcceptedClasses">The accepted window classes.</param>
+/// <returns>The handle of the resolved control, or 0 if not found.</returns>
 function ResolveControl(Parent: HWND; Token: string; const AcceptedClasses: array of PChar): HWND;
 var
   ID: Integer;
@@ -1152,6 +1368,12 @@ begin
   raise Exception.CreateFmt('Control "%s" not found (by name, ID, or HWND)', [Token]);
 end;
 
+/// <summary>
+/// Converts a key name (like "Enter", "Esc", "F1", etc.) to its corresponding virtual key code (VK).
+/// </summary>
+/// <param name="Name">The name of the key.</param>
+/// <param name="VK">The virtual key code.</param>
+/// <returns>True if the key name was recognized, false otherwise.</returns>
 function KeyNameToVK(const Name: string; out VK: UINT): Boolean;
 var
   S: string;
@@ -1276,6 +1498,11 @@ begin
   Result := True;
 end;
 
+/// <summary>
+/// Converts a string representing a combination of modifier keys to a set of modifier flags.
+/// </summary>
+/// <param name="Token">The token representing the key combination.</param>
+/// <returns>The set of modifier flags.</returns>
 function ParseModifiers(var Token: string): TModifiers;
 var
   parts: TArray<string>;
@@ -1306,6 +1533,10 @@ begin
   Token := Trim(parts[High(parts)]);
 end;
 
+/// <summary>
+/// Simulates the pressing of a key combination (chord) specified as a string, such as "Ctrl+Shift+X".
+/// </summary>
+/// <param name="Chord">The key combination to simulate.</param>
 procedure SendChord(const Chord: string);
 var
   Token: string;
@@ -1325,7 +1556,7 @@ begin
   if mdShift in mods then
     SendInputKey(VK_SHIFT, True, False);
   if mdAlt in mods then
-    SendInputKey(VK_MENU, True, False);
+    SendInputKey(VK_MENU, True, False); //Alt
   if mdWin in mods then
     SendInputKey(VK_LWIN, True, False); // left Win
 
@@ -1345,6 +1576,11 @@ begin
     SendInputKey(VK_CONTROL, False, False);
 end;
 
+/// <summary>
+/// Resolves an alias token to its corresponding value, if it exists in the alias list; otherwise, returns the original token.
+/// </summary>
+/// <param name="Token">The alias token to resolve.</param>
+/// <returns>The resolved value or the original token if the alias is not found.</returns>
 function ResolveAlias(const Token: string): string;
 begin
   if FAliases.IndexOfName(Token) >= 0 then
@@ -1353,6 +1589,13 @@ begin
     Result := Token;
 end;
 
+/// <summary>
+/// Tries to resolve a mouse point alias (e.g., "MousePoint:100,200") to its corresponding screen coordinates.
+/// </summary>
+/// <param name="Token">The alias token to resolve.</param>
+/// <param name="ScreenX">The resulting screen X coordinate.</param>
+/// <param name="ScreenY">The resulting screen Y coordinate.</param>
+/// <returns>True if the alias was resolved successfully, false otherwise.</returns>
 function TryResolveMousePointAlias(const Token: string;
   out ScreenX, ScreenY: Integer): Boolean;
 var
@@ -1367,8 +1610,7 @@ begin
   if not AliasValue.StartsWith(MOUSE_POINT_ALIAS_PREFIX) then
     Exit;
 
-  Coordinates := Copy(AliasValue, Length(MOUSE_POINT_ALIAS_PREFIX) + 1,
-    MaxInt);
+  Coordinates := Copy(AliasValue, Length(MOUSE_POINT_ALIAS_PREFIX) + 1, MaxInt);
   Parts := Coordinates.Split([',']);
   if Length(Parts) <> 2 then
     Exit;
@@ -1377,12 +1619,22 @@ begin
     TryStrToInt(Parts[1], ScreenY);
 end;
 
+/// <summary>
+/// Determines whether a window is edit-like.
+/// </summary>
+/// <param name="h">The window handle.</param>
+/// <returns>True if the window is edit-like, false otherwise.</returns>
 function IsEditLike(h: HWND): Boolean;
 begin
   // Reuse edit-like classes
   Result := IsClassIn(h, EDIT_CLASS_NAMES);
 end;
 
+/// <summary>
+/// Gets the top-level window for a given window handle, considering both parent and owner relationships.
+/// </summary>
+/// <param name="h">The window handle.</param>
+/// <returns>The top-level window handle.</returns>
 function GetTopLevelWindow(h: HWND): HWND;
 begin
   if h = 0 then
@@ -1398,6 +1650,12 @@ begin
     Result := GetWindow(Result, GW_OWNER);
 end;
 
+/// <summary>
+/// Checks if a given string matches any string in an array, ignoring case.
+/// </summary>
+/// <param name="S">The string to search for.</param>
+/// <param name="Arr">The array of strings to search in.</param>
+/// <returns>True if a match is found, false otherwise.</returns>
 function SameTextArray(const S: string; const Arr: TArray<string>): Boolean;
 begin
   for var i := 0 to High(Arr) do
@@ -1406,6 +1664,11 @@ begin
   Result := False;
 end;
 
+/// <summary>
+/// Gets the class name of a window given its handle.
+/// </summary>
+/// <param name="h">The window handle.</param>
+/// <returns>The window class name.</returns>
 function GetWndClass(h: HWND): string;
 var
   Buf: array [0 .. 255] of Char;
@@ -1418,6 +1681,11 @@ begin
     Result := '';
 end;
 
+/// <summary>
+/// Gets the text of a window given its handle.
+/// </summary>
+/// <param name="h">The window handle.</param>
+/// <returns>The window text.</returns>
 function GetWndText(h: HWND): string;
 var
   len: Integer;
@@ -1430,6 +1698,12 @@ begin
     Result := '';
 end;
 
+/// <summary>
+/// Finds a top-level window by its caption or class name, optionally considering extra class names.
+/// </summary>
+/// <param name="HWND">The window handle to evaluate.</param>
+/// <param name="lParam">The context information for the search.</param>
+/// <returns>True to continue enumeration, false if the window is found.</returns>
 function EnumWinFindProc(HWND: HWND; lParam: lParam): BOOL; stdcall;
 var
   ctx: PFindWinCtx;
@@ -1458,6 +1732,12 @@ end;
 
 // ---------- Diagnostics helpers ----------
 
+/// <summary>
+/// Searches for the deepest child window at a given screen coordinate, traversing through child windows while skipping
+/// invisible, disabled, or transparent windows.
+/// </summary>
+/// <param name="PtScreen">The screen coordinates.</param>
+/// <returns>The handle of the deepest child window at the specified location.</returns>
 function DeepChildWindowFromPoint(const PtScreen: TPoint): HWND;
 var
   h, child: HWND;
@@ -1484,12 +1764,27 @@ begin
   end;
 end;
 
+/// <summary>
+/// Gets the text of a window in a safe manner, using the GetControlWindowText function to handle potential issues with certain window types.
+/// </summary>
+/// <param name="h">The window handle.</param>
+/// <returns>The window text.</returns>
 function GetWindowTextSafe(h: HWND): string;
 begin
   Result := GetControlWindowText(h);
 end;
 
+/// <summary>
+/// Gets the caption of the control at the specified screen coordinates.
+/// </summary>
+/// <param name="pt">The screen coordinates.</param>
+/// <returns>The caption of the control at the specified location.</returns>
 function GetCaptionAtPoint(const pt: TPoint): string;
+  /// <summary>
+  /// Performs the GetControlCaption routine.
+  /// </summary>
+  /// <param name="Control">The control for which to get the caption.</param>
+  /// <returns>The result of the operation.</returns>
   function GetControlCaption(Control: TObject): string;
   var
     PropInfo: PPropInfo;
@@ -1543,6 +1838,11 @@ begin
     Result := GetControlCaption(ctrl);
 end;
 
+/// <summary>
+/// Gets the caption of a window or its control ID if the caption is empty.
+/// </summary>
+/// <param name="h">The window handle.</param>
+/// <returns>The window caption or ID.</returns>
 function GetWindowCaptionOrID(h: HWND): string;
 var
   Buf: array [0 .. 255] of Char;
@@ -1558,7 +1858,17 @@ begin
   end;
 end;
 
+/// <summary>
+/// Describes a window by providing its ID, text, parent, handle, position, class, and mouse coordinates.
+/// </summary>
+/// <param name="h">The window handle.</param>
+/// <returns>The description of the window.</returns>
 function DescribeWindow(h: HWND): string;
+  /// <summary>
+  /// Gets the first line of a string, stopping at the first carriage return or line feed character.
+  /// </summary>
+  /// <param name="S">The string to process.</param>
+  /// <returns>The first line of the string.</returns>
   function FirstLine(const S: string): string;
   var
     p: Integer;
@@ -1612,6 +1922,12 @@ begin
     [ID, sTxt, parentTxt, Pointer(h), RectToStr(R), cls, pt.X, pt.Y]);
 end;
 
+/// <summary>
+/// Describes a window in detail, including its class, ID, parent, position, size, and caption, based on the provided window handle and screen coordinates.
+/// </summary>
+/// <param name="h">The window handle.</param>
+/// <param name="Pt">The screen coordinates.</param>
+/// <returns>The description of the window.</returns>
 function DescribeWindowDetails(h: HWND; const Pt: TPoint): TStringList;
 var
   ClassNameBuffer, TextBuffer: array [0 .. 255] of Char;
@@ -1666,6 +1982,11 @@ begin
   Result.Add('Caption: ' + CaptionText);
 end;
 
+/// <summary>
+/// Describes the window at the specified screen coordinates.
+/// </summary>
+/// <param name="PtScreen">The screen coordinates.</param>
+/// <returns>The description of the window.</returns>
 function DescribeAtPoint(const PtScreen: TPoint): string;
 var
   h: HWND;
@@ -1688,7 +2009,12 @@ begin
 end;
 
 { ---- Buttons matching by caption text and custom classes ---- }
-
+/// <summary>
+/// Finds a descendant button by its caption.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <param name="Caption">The caption of the button to find.</param>
+/// <returns>The handle of the found button, or 0 if not found.</returns>
 function FindDescendantButtonByCaption(Parent: HWND; const Caption: string): HWND;
 var
   ctx: TEnumButtonsCtx;
@@ -1706,7 +2032,12 @@ begin
 end;
 
 { ---- Misc helpers ---- }
-
+/// <summary>
+/// Encrypts or decrypts a string using a simple XOR-based algorithm with a predefined key.
+/// </summary>
+/// <param name="Action">The action to perform ('E' for encrypt, 'D' for decrypt).</param>
+/// <param name="Src">The string to encrypt or decrypt.</param>
+/// <returns>The result of the operation.</returns>
 function DoCryptXOR(Action, Src: string): string;
 var
   KeyLen, KeyPos: Integer;
@@ -1774,6 +2105,12 @@ begin
   Result := dest;
 end;
 
+/// <summary>
+/// Finds a top-level window by its caption or class name, with the ability to specify additional class names to consider during the search.
+/// </summary>
+/// <param name="TitleOrClass">The caption or class name to search for.</param>
+/// <param name="ExtraClasses">An array of additional class names to consider during the search.</param>
+/// <returns>The handle of the found window, or 0 if not found.</returns>
 function FindTopWindowByTitleOrClassFlexible(const TitleOrClass: string; const ExtraClasses: TArray<string>): HWND;
 var
   ctx: TFindWinCtx;
@@ -1795,15 +2132,27 @@ begin
   Result := ctx.Found;
 end;
 
+/// <summary>
+/// Requires a top-level window by its caption or class name, with the ability to specify additional class names to consider during the search.
+/// If the window is not found, an exception is raised.
+/// </summary>
+/// <param name="TitleOrClass">The caption or class name to search for.</param>
+/// <returns>The handle of the found window, or 0 if not found.</returns>
 function RequireTopWindowFlexible(const TitleOrClass: string): HWND;
 begin
   // Default extra classes including the common dialog class and custom one
   Result := FindTopWindowByTitleOrClassFlexible(TitleOrClass, [DIALOG_CLASS, 'TFormPOSOptionsBox']);
   if Result = 0 then
-    raise Exception.CreateFmt('Window not found (caption OR class): "%s"',
+    raise Exception.CreateFmt(
+      'Window not found (caption OR class): "%s"',
       [TitleOrClass]);
 end;
 
+/// <summary>
+/// Normalizes a label string by trimming whitespace and removing a trailing colon if present.
+/// </summary>
+/// <param name="S">The string to normalize.</param>
+/// <returns>The normalized string.</returns>
 function NormalizeLabel(const S: string): string;
 var
   t: string;
@@ -1814,6 +2163,12 @@ begin
   Result := Trim(t);
 end;
 
+/// <summary>
+/// Finds an edit control near a label.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <param name="LabelText">The text of the label to find.</param>
+/// <returns>The handle of the found edit control, or 0 if not found.</returns>
 function FindEditNearLabel(Parent: HWND; const LabelText: string): HWND;
 var
   LabelHwnd: HWND;
@@ -1870,11 +2225,22 @@ begin
   end;
 end;
 
+/// <summary>
+/// Finds a dialog window by its title.
+/// </summary>
+/// <param name="Title">The title of the dialog to find.</param>
+/// <returns>The handle of the found dialog, or 0 if not found.</returns>
 function FindDialogByTitle(const Title: string): HWND;
 begin
   Result := FindWindow(PChar(DIALOG_CLASS), PChar(Title));
 end;
 
+/// <summary>
+/// Requires a dialog window by its title or class name, with the ability to specify additional class names to consider during the search.
+/// If the window is not found, an exception is raised.
+/// </summary>
+/// <param name="TitleOrClass">The title or class name to search for.</param>
+/// <returns>The handle of the found window.</returns>
 function RequireDialogFlexible(const TitleOrClass: string): HWND;
 var
   h: HWND;
@@ -1890,6 +2256,12 @@ begin
   raise Exception.CreateFmt('Window not found (dialog/top/class): "%s"', [TitleOrClass]);
 end;
 
+/// <summary>
+/// Finds a descendant window by its text or class name.
+/// </summary>
+/// <param name="Parent">The parent window handle.</param>
+/// <param name="Token">The text or class name to search for.</param>
+/// <returns>The handle of the found window, or 0 if not found.</returns>
 function FindDescendantByTextOrClass(Parent: HWND; const Token: string): HWND;
 var
   h: HWND;
@@ -1917,6 +2289,11 @@ begin
   end;
 end;
 
+/// <summary>
+/// Resolves a root window based on a token, which can be a dialog title, top-level window title/class, or an HWND token.
+/// </summary>
+/// <param name="Token">The token to search for.</param>
+/// <returns>The handle of the found window, or 0 if not found.</returns>
 function ResolveRootWindow(const Token: string): HWND;
 var
   h, top: HWND;
@@ -1945,6 +2322,11 @@ begin
   end;
 end;
 
+/// <summary>
+/// Gets the text of a button control.
+/// </summary>
+/// <param name="h">The handle of the button control.</param>
+/// <returns>The text of the button, or an empty string if not found.</returns>
 function GetButtonText(h: HWND): string;
 var
   Buf: array[0..255] of Char;
@@ -1955,6 +2337,11 @@ begin
     Result := Buf;
 end;
 
+/// <summary>
+/// Gets the text of an edit control.
+/// </summary>
+/// <param name="h">The handle of the edit control.</param>
+/// <returns>The text of the edit control, or an empty string if not found.</returns>
 function GetEditText(h: HWND): string;
 var
   Len: Integer;
@@ -1969,6 +2356,10 @@ begin
   GetWindowText(h, PChar(Result), Len + 1);
 end;
 
+/// <summary>
+/// Brings a window to the foreground.
+/// </summary>
+/// <param name="hWnd">The handle of the window to bring to the foreground.</param>
 procedure BringWindowToForeground(hWnd: HWND);
 var
   ForeThreadID: DWORD;
@@ -1998,6 +2389,10 @@ begin
   end;
 end;
 
+/// <summary>
+/// Clicks a control by simulating a mouse click at its center, bringing the parent window to the foreground first.
+/// </summary>
+/// <param name="h">The handle of the control to click.</param>
 procedure ClickByMouse(h: HWND);
 var
   R: TRect;
@@ -2023,7 +2418,11 @@ begin
 end;
 
 { =================== Instance helpers =================== }
-
+/// <summary>
+/// TForm1.FormCreate is called when the form is created (i.e. the program is first run).
+/// It initializes various components, sets up the inspector overlay, and handles command-line parameters for loading a script file.
+/// </summary>
+/// <param name="Sender">The value supplied to this routine.</param>
 procedure TForm1.FormCreate(Sender: TObject);
 var
   RunScriptProc: TThreadProcedure;
@@ -2060,6 +2459,10 @@ begin
   end;
 end;
 
+/// <summary>
+/// TForm1.FormDestroy is called when the form is destroyed (i.e. the program is closing).
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.FormDestroy(Sender: TObject);
 begin
   if FRecording then
@@ -2070,6 +2473,10 @@ begin
   FAliases.Free;
 end;
 
+/// <summary>
+/// TForm1.CloseWindowByCaption is called to close a window by its caption.
+/// </summary>
+/// <param name="WindowTitle">The caption of the window to close.</param>
 procedure TForm1.CloseWindowByCaption(const WindowTitle: string);
 var
   W: HWND;
@@ -2079,11 +2486,19 @@ begin
     PostMessage(W, WM_CLOSE, 0, 0);
 end;
 
+/// <summary>
+/// TForm1.EncryptClick is called when the encrypt button is clicked.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.EncryptClick(Sender: TObject);
 begin
   FEncryptOutput.Text := DoCryptXOR('E', FEncryptInput.Text);
 end;
 
+/// <summary>
+/// TForm1.Encryption1Click is called when the encryption button is clicked.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.Encryption1Click(Sender: TObject);
 var
   F: TForm;
@@ -2141,6 +2556,10 @@ begin
   end;
 end;
 
+/// <summary>
+/// TForm1.tmrInspectorTimer is called on a timer event to inspect the window under the mouse cursor.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.tmrInspectorTimer(Sender: TObject);
 var
   pt: TPoint;
@@ -2157,8 +2576,7 @@ begin
     Exit;
   end;
 
-  if FHasInspectorPos and (pt.X = FLastInspectorPos.X) and
-    (pt.Y = FLastInspectorPos.Y) then
+  if FHasInspectorPos and (pt.X = FLastInspectorPos.X) and (pt.Y = FLastInspectorPos.Y) then
     Exit;
 
   FLastInspectorPos := pt;
@@ -2192,6 +2610,10 @@ begin
   end;
 end;
 
+/// <summary>
+/// TForm1.chkHoverTextClick is called when the hover text checkbox is clicked.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.chkHoverTextClick(Sender: TObject);
 begin
   FHasInspectorPos := False;
@@ -2202,6 +2624,10 @@ begin
   end;
 end;
 
+/// <summary>
+/// TForm1.btnLoadClick is called when the load button is clicked.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.btnLoadClick(Sender: TObject);
 var
   dlg: TOpenDialog;
@@ -2224,6 +2650,10 @@ begin
   end;
 end;
 
+/// <summary>
+/// TForm1.btnSaveClick is called when the save button is clicked.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.btnSaveClick(Sender: TObject);
 var
   SL: TStringList;
@@ -2255,6 +2685,12 @@ begin
   end;
 end;
 
+/// <summary>
+/// TForm1.MouseClickAt is called to simulate a mouse click at a specific screen location.
+/// </summary>
+/// <param name="ScreenX">The x-coordinate of the screen location.</param>
+/// <param name="ScreenY">The y-coordinate of the screen location.</param>
+/// <param name="Button">The mouse button to click ('Left', 'Right', or 'Middle').</param>
 procedure TForm1.MouseClickAt(ScreenX, ScreenY: Integer;
   const Button: string);
 var
@@ -2282,18 +2718,31 @@ begin
   mouse_event(UpFlag, 0, 0, 0, 0);
 end;
 
+/// <summary>
+/// TForm1.ScrollMouseAt is called to simulate a mouse scroll at a specific screen location.
+/// </summary>
+/// <param name="ScreenX">The x-coordinate of the screen location.</param>
+/// <param name="ScreenY">The y-coordinate of the screen location.</param>
+/// <param name="Delta">The amount to scroll.</param>
 procedure TForm1.ScrollMouseAt(ScreenX, ScreenY, Delta: Integer);
 begin
   SetCursorPos(ScreenX, ScreenY);
   mouse_event(MOUSEEVENTF_WHEEL, 0, 0, DWORD(Delta), 0);
 end;
 
+/// <summary>
+/// TForm1.AppendRecordedCommand is called to append a recorded command to the script.
+/// </summary>
+/// <param name="Command">The command to append.</param>
 procedure TForm1.AppendRecordedCommand(const Command: string);
 begin
   mmoScript.Lines.Add(Command);
   lblStatus.Caption := 'Recording macro...';
 end;
 
+/// <summary>
+/// TForm1.FlushRecordedText is called to flush the recorded text to the script.
+/// </summary>
 procedure TForm1.FlushRecordedText;
 begin
   if FRecordedText = '' then
@@ -2303,8 +2752,13 @@ begin
   FRecordedText := '';
 end;
 
-procedure TForm1.RecordMouseClick(ScreenX, ScreenY: Integer;
-  const Button: string);
+/// <summary>
+/// TForm1.RecordMouseClick is called to record a mouse click at a specific screen location.
+/// </summary>
+/// <param name="ScreenX">The x-coordinate of the screen location.</param>
+/// <param name="ScreenY">The y-coordinate of the screen location.</param>
+/// <param name="Button">The mouse button to click ('Left', 'Right', or 'Middle').</param>
+procedure TForm1.RecordMouseClick(ScreenX, ScreenY: Integer; const Button: string);
 var
   Control, Root: HWND;
   WindowName, ButtonName: string;
@@ -2336,6 +2790,10 @@ begin
   end;
 end;
 
+/// <summary>
+/// TForm1.SetRecording is called to set the recording state.
+/// </summary>
+/// <param name="Value">The recording state to set.</param>
 procedure TForm1.SetRecording(Value: Boolean);
 var
   UnhookFailed: Boolean;
@@ -2360,7 +2818,8 @@ begin
       ErrorCode := GetLastError;
       UnhookWindowsHookEx(GKeyboardRecordHook);
       GKeyboardRecordHook := 0;
-      raise Exception.CreateFmt('Could not install the mouse recording hook: %s',
+      raise Exception.CreateFmt(
+        'Could not install the mouse recording hook: %s',
         [SysErrorMessage(ErrorCode)]);
     end;
 
@@ -2401,11 +2860,20 @@ begin
   end;
 end;
 
+/// <summary>
+/// TForm1.btnRecordClick is called when the record button is clicked.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.btnRecordClick(Sender: TObject);
 begin
   SetRecording(not FRecording);
 end;
 
+/// <summary>
+/// TForm1.RecordKey is called to record a key press.
+/// </summary>
+/// <param name="VKCode">The virtual key code.</param>
+/// <param name="ScanCode">The scan code.</param>
 procedure TForm1.RecordKey(VKCode, ScanCode: UINT);
 var
   KeyName, Chord: string;
@@ -2529,6 +2997,10 @@ begin
     AppendRecordedCommand('PressKey ' + Chord);
 end;
 
+/// <summary>
+/// TForm1.mmoScriptChange is called when the script memo changes, updating line numbers and enabling the save button.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.mmoScriptChange(Sender: TObject);
 begin
   // sync mmoLineNumbers so that both have the same number of lines
@@ -2546,16 +3018,29 @@ begin
     lblStatus.Caption := 'Ready';
 end;
 
+/// <summary>
+/// TForm1.mmoScriptKeyPress is called when a key is pressed while the script memo has focus.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
+/// <param name="Key">The key that was pressed.</param>
 procedure TForm1.mmoScriptKeyPress(Sender: TObject; var Key: Char);
 begin
   mmoLineNumbers.ScrollPosition := mmoScript.ScrollPosition;
 end;
 
+/// <summary>
+/// TForm1.Quit1Click is called when the quit menu item is clicked.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.Quit1Click(Sender: TObject);
 begin
   Application.Terminate;
 end;
 
+/// <summary>
+/// TForm1.Reference1Click is called when the reference menu item is clicked.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.Reference1Click(Sender: TObject);
 var
   SL: TStringList;
@@ -2619,6 +3104,12 @@ begin
   end;
 end;
 
+/// <summary>
+/// TForm1.SetEditText is called to set the text of an edit control.
+/// </summary>
+/// <param name="Edit">The handle of the edit control.</param>
+/// <param name="Value">The text to set.</param>
+/// <returns>True if the operation was successful, false otherwise.</returns>
 function TForm1.SetEditText(Edit: HWND; const Value: string): Boolean;
 var
   Top: HWND;
@@ -2644,6 +3135,11 @@ begin
   Result := True;
 end;
 
+/// <summary>
+/// TForm1.RunScriptLines is called to execute a list of script lines.
+/// </summary>
+/// <param name="Lines">The list of script lines to execute.</param>
+/// <param name="SourceName">The name of the source containing the script lines.</param>
 procedure TForm1.RunScriptLines(Lines: TStrings; const SourceName: string);
 var
   lineNumber: Integer;
@@ -2688,6 +3184,12 @@ begin
   lblStatus.Caption := 'Completed all tasks';
 end;
 
+/// <summary>
+/// Resolves an edit control handle based on a token, which can be a window handle, control ID, friendly name, or label text.
+/// </summary>
+/// <param name="W">The window handle.</param>
+/// <param name="Token">The token to resolve.</param>
+/// <returns>The result of the operation.</returns>
 function ResolveEditHandle(W: HWND; const Token: string): HWND;
 var
   Edits: TArray<HWND>;
@@ -2738,6 +3240,12 @@ begin
   Result := FindEditNearLabel(W, Token);
 end;
 
+/// <summary>
+/// Resolves the full path of a script file based on its name and the parent script's path.
+/// </summary>
+/// <param name="ScriptName">The name of the script file to resolve.</param>
+/// <param name="ParentScriptPath">The path of the parent script.</param>
+/// <returns>The full path of the resolved script file.</returns>
 function ResolveScriptPath(const ScriptName, ParentScriptPath: string): string;
 var
   FileName: string;
@@ -2774,6 +3282,12 @@ begin
     [ScriptName]);
 end;
 
+/// <summary>
+/// Expands "Load" commands in a list of script lines by replacing them with the contents of the specified script files.
+/// This is analogous to a preprocessor include directive, allowing scripts to be modular and reusable.
+/// </summary>
+/// <param name="Lines">The list of script lines to process.</param>
+/// <param name="SourceFileName">The name of the source file containing the script lines.</param>
 procedure ExpandLoadCommands(Lines: TStringList; const SourceFileName: string);
 var
   i: Integer;
@@ -2814,6 +3328,11 @@ begin
   end;
 end;
 
+/// <summary>
+/// Clicks an element within a specified window, resolving the element by its token (which can be a name, ID, or other identifier).
+/// </summary>
+/// <param name="WindowName">The name of the window containing the element.</param>
+/// <param name="Token">The token identifying the element.</param>
 procedure TForm1.ClickElementInternal(const WindowName: string; var Token: string);
 var
   Root, Ctrl: HWND;
@@ -2842,6 +3361,14 @@ begin
   end;
 end;
 
+/// <summary>
+/// Runs a command based on the provided parts, line number, and source name. This function interprets the command and executes the corresponding action.
+/// This is the main part of the script execution engine, dispatching commands to their respective handlers.
+/// </summary>
+/// <param name="parts">The list of command parts to execute.</param>
+/// <param name="lineNumber">The line number in the source file.</param>
+/// <param name="SourceName">The name of the source file.</param>
+/// <returns>The result of the operation.</returns>
 function TForm1.ExecuteCommand(const parts: TArray<string>; lineNumber: Integer; const SourceName: string): Boolean;
 var
   ScriptName, ScriptPath: string;
@@ -2941,7 +3468,6 @@ begin
     bOK := True;
   end
 
-
   else if SameText(parts[0], 'MouseClick') then
   begin
     var ScreenX, ScreenY: Integer;
@@ -2961,8 +3487,7 @@ begin
       else
         Button := parts[2];
 
-      if not (SameText(Button, 'Left') or SameText(Button, 'Right') or
-        SameText(Button, 'Middle')) then
+      if not (SameText(Button, 'Left') or SameText(Button, 'Right') or SameText(Button, 'Middle')) then
         raise Exception.CreateFmt(
           'Error on line %d. Unknown mouse button "%s".',
           [lineNumber + 1, Button]);
@@ -3333,6 +3858,11 @@ begin
 
 end;
 
+/// <summary>
+/// Runs a script file by loading its contents and executing the commands line by line.
+/// This function handles the reading of the script file and delegates the execution to RunScriptLines.
+/// </summary>
+/// <param name="FileName">The path to the script file to run.</param>
 procedure TForm1.RunScriptFile(FileName: string);
 var
   Lines: TStringList;
@@ -3350,7 +3880,10 @@ begin
 end;
 
 { =================== Script Runner =================== }
-
+/// <summary>
+/// Runs the script currently loaded in the memo editor. This is the main entry point for executing user-defined scripts.
+/// </summary>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.btnGoClick(Sender: TObject);
 var
   Script: TStringList;
