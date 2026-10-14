@@ -302,6 +302,7 @@ function DescribeAtPoint(const PtScreen: TPoint): string; forward;
 
 /// <summary>
 /// Adds quotes around a string and escapes any internal quotes by doubling them.
+/// This is for when a token contains spaces or special characters and needs to be treated as a single argument in a script.
 /// </summary>
 /// <param name="Value">String value supplied to this routine.</param>
 /// <returns>Same input value, but with quotes added and internal quotes escaped.</returns>
@@ -1781,7 +1782,7 @@ end;
 /// <returns>The caption of the control at the specified location.</returns>
 function GetCaptionAtPoint(const pt: TPoint): string;
   /// <summary>
-  /// Performs the GetControlCaption routine.
+  /// Gets the caption of a control by checking for 'Caption' or 'CaptionValue' properties using RTTI.
   /// </summary>
   /// <param name="Control">The control for which to get the caption.</param>
   /// <returns>The result of the operation.</returns>
@@ -2422,7 +2423,7 @@ end;
 /// TForm1.FormCreate is called when the form is created (i.e. the program is first run).
 /// It initializes various components, sets up the inspector overlay, and handles command-line parameters for loading a script file.
 /// </summary>
-/// <param name="Sender">The value supplied to this routine.</param>
+/// <param name="Sender">The object that triggered the event.</param>
 procedure TForm1.FormCreate(Sender: TObject);
 var
   RunScriptProc: TThreadProcedure;
