@@ -212,6 +212,27 @@ type
 
   PFindCaptionCtx = ^TFindCaptionCtx;
 
+  TAppCommand = (
+    //order is not important
+    CmdLoad,
+    CmdDumpWindow,
+    CmdClickButton,
+    CmdClickElement,
+    CmdMouseClick,
+    CmdMouseWheel,
+    CmdSetText,
+    CmdClose,
+    CmdTypeText,
+    CmdTypePassword,
+    CmdPressKey,
+    CmdDumpHere,
+    CmdSetPause,
+    CmdSleep,
+    CmdLanetool,
+    CmdIf,
+    CmdAlias
+  );
+
 const
   DIALOG_CLASS = '#32770';
   CR = #13;
@@ -3454,485 +3475,535 @@ function TForm1.ExecuteCommand(const parts: TArray<string>; lineNumber: Integer;
 var
   ScriptName, ScriptPath: string;
   bOK: Boolean;
+
+  function ParseAppCommand(const S: string): TAppCommand;
+  begin
+    if SameText(S, 'Load') then
+      Exit(CmdLoad);
+    if SameText(S, 'DumpWindow') then
+      Exit(CmdDumpWindow);
+    if SameText(S, 'ClickButton') then
+      Exit(CmdClickButton);
+    if SameText(S, 'ClickElement') then
+      Exit(CmdClickElement);
+    if SameText(S, 'MouseClick') then
+      Exit(CmdMouseClick);
+    if SameText(S, 'MouseWheel') then
+      Exit(CmdMouseWheel);
+    if SameText(S, 'SetText') then
+      Exit(CmdSetText);
+    if SameText(S, 'Close') then
+      Exit(CmdClose);
+    if SameText(S, 'TypeText') then
+      Exit(CmdTypeText);
+    if SameText(S, 'TypePassword') then
+      Exit(CmdTypePassword);
+    if SameText(S, 'PressKey') then
+      Exit(CmdPressKey);
+    if SameText(S, 'DumpHere') then
+      Exit(CmdDumpHere);
+    if SameText(S, 'SetPause') then
+      Exit(CmdSetPause);
+    if SameText(S, 'Sleep') then
+      Exit(CmdSleep);
+    if SameText(S, 'LaneTool') then
+      Exit(CmdLaneTool);
+    if SameText(S, 'Alias') then
+      Exit(CmdAlias);
+    if SameText(S, 'If') then
+      Exit(CmdIf);
+
+    raise Exception.CreateFmt('Unknown command: %s', [S]);
+  end;
+
 begin
 
   bOK := False;
   Result := bOK;
 
-  //TODO: change this to a switch statement for better readability
+  case ParseAppCommand(parts[0]) of //TAppCommand
 
-  if SameText(parts[0], 'DumpWindow') then
-  begin
-    // DumpWindow <WindowCaptionOrClass>
-    IDs := [];
-
-    if Length(parts) = 1 then
-      if (ShowEditsOrChildrenFor(defaultWindowName.Text, 'DumpWindow')) then
-        bOK := True
-    else if Length(parts) = 2 then
-      if (ShowEditsOrChildrenFor(ResolveAlias(parts[1]), 'DumpWindow')) then
-        bOK := True
-    else
-      raise Exception.CreateFmt(
-        'Error on line %d. DumpWindow usage: DumpWindow <windowCaptionOrClass>',
-        [lineNumber + 1]);
-  end
-
-  else if SameText(parts[0], 'ClickButton') then
-  begin
-    // ClickButton <Caption|ButtonOK>
-    // ClickButton <WindowCaptionOrClass> <Caption|ButtonOK>
-    if Length(parts) = 2 then
-    begin
-      var W := RequireDialogFlexible(defaultWindowName.Text);
-      var Token := ResolveAlias(parts[1]);
-      var Btn := ResolveControl(W, Token, BUTTON_CLASS_NAMES);
-
-      if Btn = 0 then
+    CmdDumpWindow:
       begin
-        ShowTextDialog('Error', Format(
-          'Error on line %d. Button "%s" not found in "%s".' + CRLF + CRLF + '%s',
-          [lineNumber + 1, Token, defaultWindowName.Text, FormatButtonsSummary(W)]), 500, 200);
-      end
+
+      // DumpWindow <WindowCaptionOrClass>
+      IDs := [];
+
+      if Length(parts) = 1 then
+        if (ShowEditsOrChildrenFor(defaultWindowName.Text, 'DumpWindow')) then
+          bOK := True
+      else if Length(parts) = 2 then
+        if (ShowEditsOrChildrenFor(ResolveAlias(parts[1]), 'DumpWindow')) then
+          bOK := True
       else
-      begin
-        ClickByMouse(Btn);
-        bOK := True;
-      end;
-    end
-    else if Length(parts) = 3 then
+        raise Exception.CreateFmt(
+          'Error on line %d. DumpWindow usage: DumpWindow <windowCaptionOrClass>',
+          [lineNumber + 1]);
+    end;
+
+    CmdClickButton:
     begin
-      var W := RequireDialogFlexible(ResolveAlias(parts[1]));
-      var Token := ResolveAlias(parts[2]);
-      var Btn := ResolveControl(W, Token, BUTTON_CLASS_NAMES);
-
-      if Btn = 0 then
-      begin
-        ShowTextDialog('Error', Format(
-          'Error on line %d. Button "%s" not found in "%s".' + CRLF + CRLF + '%s',
-          [lineNumber + 1, Token, defaultWindowName.Text, FormatButtonsSummary(W)]), 500, 200);
-      end
-      else
-      begin
-        ClickByMouse(Btn);
-        bOK := True;
-      end;
-    end
-    else
-      raise Exception.CreateFmt(
-        'Error on line %d. ClickButton usage: ClickButton <caption|name>  OR  ClickButton <window> <caption|name>',
-        [lineNumber + 1]);
-  end
-
-  else if SameText(parts[0], 'ClickElement') then
-  begin
-    var WindowName, Token: string;
-
-    if Length(parts) = 2 then
-    begin
-      // ClickElement <token>
-      WindowName := defaultWindowName.Text;
-      Token := ResolveAlias(parts[1]);
-    end
-    else if Length(parts) = 3 then
-    begin
-      // ClickElement <windowName> <token>
-      WindowName := ResolveAlias(parts[1]);
-      Token := ResolveAlias(parts[2]);
-    end
-    else
-      raise Exception.CreateFmt(
-        'ClickElement usage: ClickElement <token> OR ClickElement "Window Name" <token> (line %d)',
-        [lineNumber + 1]);
-
-    ClickElementInternal(WindowName, Token);
-    bOK := True;
-  end
-
-  else if SameText(parts[0], 'MouseClick') then
-  begin
-    var ScreenX, ScreenY: Integer;
-    var Button: string;
-
-    if (Length(parts) = 2) or
-      ((Length(parts) = 3) and TryResolveMousePointAlias(parts[1], ScreenX, ScreenY)) then
-    begin
+      // ClickButton <Caption|ButtonOK>
+      // ClickButton <WindowCaptionOrClass> <Caption|ButtonOK>
       if Length(parts) = 2 then
       begin
-        if not TryResolveMousePointAlias(parts[1], ScreenX, ScreenY) then
-          raise Exception.CreateFmt(
-            'Error on line %d. "%s" is not a coordinate alias. Define it with Alias <name> <x> <y>.',
-            [lineNumber + 1, parts[1]]);
-        Button := 'Left';
-      end
-      else
-        Button := parts[2];
+        var W := RequireDialogFlexible(defaultWindowName.Text);
+        var Token := ResolveAlias(parts[1]);
+        var Btn := ResolveControl(W, Token, BUTTON_CLASS_NAMES);
 
-      if not (SameText(Button, 'Left') or SameText(Button, 'Right') or SameText(Button, 'Middle')) then
-        raise Exception.CreateFmt(
-          'Error on line %d. Unknown mouse button "%s".',
-          [lineNumber + 1, Button]);
-
-      MouseClickAt(ScreenX, ScreenY, Button);
-    end
-    else if (Length(parts) <> 3) and (Length(parts) <> 4) then
-      raise Exception.CreateFmt(
-        'Error on line %d. MouseClick usage: MouseClick <x> <y> [Left|Right|Middle] or MouseClick <coordinateAlias> [Left|Right|Middle]',
-        [lineNumber + 1])
-    else
-    begin
-      if Length(parts) = 3 then
-        MouseClickAt(StrToInt(parts[1]), StrToInt(parts[2]), 'Left')
-      else if SameText(parts[3], 'Left') or SameText(parts[3], 'Right') or SameText(parts[3], 'Middle') then
-        MouseClickAt(StrToInt(parts[1]), StrToInt(parts[2]), parts[3])
-      else
-        raise Exception.CreateFmt(
-          'Error on line %d. Unknown mouse button "%s".',
-          [lineNumber + 1, parts[3]]);
-    end;
-
-    bOK := True;
-  end
-
-  else if SameText(parts[0], 'MouseWheel') then
-  begin
-    if Length(parts) <> 4 then
-      raise Exception.CreateFmt(
-        'Error on line %d. MouseWheel usage: MouseWheel <x> <y> <delta>',
-        [lineNumber + 1]);
-
-    ScrollMouseAt(StrToInt(parts[1]), StrToInt(parts[2]), StrToInt(parts[3]));
-    bOK := True;
-  end
-
-  else if SameText(parts[0], 'SetText') then
-  begin
-    // Supported:
-    // 1) SetText <Name|Index|ID:nnn|HWND:hex> <text>         (uses Default window name)
-    // 2) SetText <Window> <Name|Index|ID:nnn|HWND:hex> <text>
-
-    if Length(parts) < 3 then
-      raise Exception.CreateFmt(
-        'Error on line %d. SetText usage:' + CRLF + '  SetText <Name|Index|ID:nnn|HWND:hex> <text>' + CRLF + '  SetText <window> <Name|Index|ID:nnn|HWND:hex> <text>',
-        [lineNumber + 1]);
-
-    if Length(parts) = 3 then
-    begin
-      // -------- Default window form --------
-      // SetText <field> <text>
-
-      var RootWnd := ResolveRootWindow(defaultWindowName.Text);
-      if RootWnd = 0 then
-        raise Exception.CreateFmt(
-          'Error on line %d. Root "%s" not found.',
-          [lineNumber + 1, defaultWindowName.Text]
-        );
-
-      var EditWnd := ResolveEditHandle(RootWnd, ResolveAlias(parts[1]));
-      if EditWnd = 0 then
-        raise Exception.CreateFmt(
-          'Error on line %d. No Edit matched "%s" under "%s".',
-          [lineNumber + 1, ResolveAlias(parts[1]), defaultWindowName.Text]
-        );
-
-      SetEditText(EditWnd, ResolveAlias(parts[2]));
-      Exit(True);
-    end
-    else // Length(Parts) >= 4
-    begin
-      // -------- Explicit window form --------
-      // SetText <window> <field> <text...>
-
-      var RootWnd := ResolveRootWindow(ResolveAlias(parts[1]));
-      if RootWnd = 0 then
-        raise Exception.CreateFmt(
-          'Error on line %d. Root "%s" not found.',
-          [lineNumber + 1, parts[1]]
-        );
-
-      var EditWnd := ResolveEditHandle(RootWnd, ResolveAlias(parts[2]));
-      if EditWnd = 0 then
-        raise Exception.CreateFmt(
-          'Error on line %d. No Edit matched "%s" under "%s".',
-          [lineNumber + 1, ResolveAlias(parts[2]), parts[1]]
-        );
-
-      SetEditText(EditWnd, parts[3]);
-      Exit(True);
-
-    end;
-  end
-
-  else if SameText(parts[0], 'Close') then
-  begin
-    if Length(parts) <> 2 then
-      raise Exception.CreateFmt(
-        'Error on line %d. Close usage: Close <window name>',
-        [lineNumber + 1]);
-
-    CloseWindowByCaption(ResolveAlias(parts[1]));
-    bOK := True;
-  end
-
-  else if SameText(parts[0], 'TypeText') then
-  begin
-    if Length(parts) <> 2 then
-      raise Exception.CreateFmt(
-        'Error on line %d. TypeText usage: TypeText "some text"',
-        [lineNumber + 1]);
-
-    TypeText(parts[1]);
-    bOK := True;
-  end
-
-  else if SameText(parts[0], 'TypePassword') then
-  begin
-    if ((Length(parts) <> 2) and (Length(parts) <> 4)) then
-      raise Exception.CreateFmt(
-        'Error on line %d. TypePassword usage: TypePassword "some encrypted text" | TypePassword "form|dialog" "control" "some encrypted text"',
-        [lineNumber + 1]);
-
-    if length(parts) = 2 then
-    begin
-      TypeText(DoCryptXOR('D', parts[1]));
-      bOK := True;
-    end
-    else if length(parts) = 4 then
-    begin
-      var WindowToken := ResolveAlias(parts[1]);
-      var FieldToken := ResolveAlias(parts[2]);
-      var W := RequireTopWindowFlexible(WindowToken);
-      var E := ResolveEditHandle(W, FieldToken);
-
-      if E = 0 then
-      begin
-        ShowTextDialog('Error', Format(
-          'Error on line %d. No Edit control matched "%s" in dialog "%s".' + CRLF + CRLF + '%s',
-          [lineNumber + 1, FieldToken, WindowToken, FormatEditsSummary(W)]), 500, 200);
-      end
-      else
-      begin
-        // rebuild text from tail (preserve spaces)
-        var Line := String.Join(' ', Parts);
-        var ArgStart := Pos(FieldToken, Line) + Length(FieldToken) + 1;
-        var Value := Trim(Copy(Line, ArgStart, MaxInt));
-
-        if SetEditText(E, DoCryptXOR('D', parts[3])) then
+        if Btn = 0 then
+        begin
+          ShowTextDialog('Error', Format(
+            'Error on line %d. Button "%s" not found in "%s".' + CRLF + CRLF + '%s',
+            [lineNumber + 1, Token, defaultWindowName.Text, FormatButtonsSummary(W)]), 500, 200);
+        end
+        else
+        begin
+          ClickByMouse(Btn);
           bOK := True;
+        end;
+      end
+      else if Length(parts) = 3 then
+      begin
+        var W := RequireDialogFlexible(ResolveAlias(parts[1]));
+        var Token := ResolveAlias(parts[2]);
+        var Btn := ResolveControl(W, Token, BUTTON_CLASS_NAMES);
+
+        if Btn = 0 then
+        begin
+          ShowTextDialog('Error', Format(
+            'Error on line %d. Button "%s" not found in "%s".' + CRLF + CRLF + '%s',
+            [lineNumber + 1, Token, defaultWindowName.Text, FormatButtonsSummary(W)]), 500, 200);
+        end
+        else
+        begin
+          ClickByMouse(Btn);
+          bOK := True;
+        end;
+      end
+      else
+        raise Exception.CreateFmt(
+          'Error on line %d. ClickButton usage: ClickButton <caption|name>  OR  ClickButton <window> <caption|name>',
+          [lineNumber + 1]);
+    end;
+
+    CmdClickElement:
+    begin
+      // On SCO, don't think this can be used as there is only 1 element on the entire screen :-(
+      var WindowName, Token: string;
+
+      if Length(parts) = 2 then
+      begin
+        // ClickElement <token>
+        WindowName := defaultWindowName.Text;
+        Token := ResolveAlias(parts[1]);
+      end
+      else if Length(parts) = 3 then
+      begin
+        // ClickElement <windowName> <token>
+        WindowName := ResolveAlias(parts[1]);
+        Token := ResolveAlias(parts[2]);
+      end
+      else
+        raise Exception.CreateFmt(
+          'ClickElement usage: ClickElement <token> OR ClickElement "Window Name" <token> (line %d)',
+          [lineNumber + 1]);
+
+      ClickElementInternal(WindowName, Token);
+      bOK := True;
+    end;
+
+    CmdMouseClick:
+    begin
+      // Default button is Left
+      var ScreenX, ScreenY: Integer;
+      var Button: string;
+
+      if (Length(parts) = 2) or
+        ((Length(parts) = 3) and TryResolveMousePointAlias(parts[1], ScreenX, ScreenY)) then
+      begin
+        if Length(parts) = 2 then
+        begin
+          if not TryResolveMousePointAlias(parts[1], ScreenX, ScreenY) then
+            raise Exception.CreateFmt(
+              'Error on line %d. "%s" is not a coordinate alias. Define it with Alias <name> <x> <y>.',
+              [lineNumber + 1, parts[1]]);
+          Button := 'Left';
+        end
+        else
+          Button := parts[2];
+
+        if not (SameText(Button, 'Left') or SameText(Button, 'Right') or SameText(Button, 'Middle')) then
+          raise Exception.CreateFmt(
+            'Error on line %d. Unknown mouse button "%s".',
+            [lineNumber + 1, Button]);
+
+        MouseClickAt(ScreenX, ScreenY, Button);
+      end
+      else if (Length(parts) <> 3) and (Length(parts) <> 4) then
+        raise Exception.CreateFmt(
+          'Error on line %d. MouseClick usage: MouseClick <x> <y> [Left|Right|Middle] or MouseClick <coordinateAlias> [Left|Right|Middle]',
+          [lineNumber + 1])
+      else
+      begin
+        if Length(parts) = 3 then
+          MouseClickAt(StrToInt(parts[1]), StrToInt(parts[2]), 'Left')
+        else if SameText(parts[3], 'Left') or SameText(parts[3], 'Right') or SameText(parts[3], 'Middle') then
+          MouseClickAt(StrToInt(parts[1]), StrToInt(parts[2]), parts[3])
+        else
+          raise Exception.CreateFmt(
+            'Error on line %d. Unknown mouse button "%s".',
+            [lineNumber + 1, parts[3]]);
+      end;
+
+      bOK := True;
+    end;
+
+    CmdMouseWheel:
+    begin
+      // Only really useful for SL
+      if Length(parts) <> 4 then
+        raise Exception.CreateFmt(
+          'Error on line %d. MouseWheel usage: MouseWheel <x> <y> <delta>',
+          [lineNumber + 1]);
+
+      ScrollMouseAt(StrToInt(parts[1]), StrToInt(parts[2]), StrToInt(parts[3]));
+      bOK := True;
+    end;
+
+    CmdSetText:
+    begin
+      // Supported:
+      // 1) SetText <Name|Index|ID:nnn|HWND:hex> <text>         (uses Default window name)
+      // 2) SetText <Window> <Name|Index|ID:nnn|HWND:hex> <text>
+
+      if Length(parts) < 3 then
+        raise Exception.CreateFmt(
+          'Error on line %d. SetText usage:' + CRLF + '  SetText <Name|Index|ID:nnn|HWND:hex> <text>' + CRLF + '  SetText <window> <Name|Index|ID:nnn|HWND:hex> <text>',
+          [lineNumber + 1]);
+
+      if Length(parts) = 3 then
+      begin
+        // -------- Default window form --------
+        // SetText <field> <text>
+
+        var RootWnd := ResolveRootWindow(defaultWindowName.Text);
+        if RootWnd = 0 then
+          raise Exception.CreateFmt(
+            'Error on line %d. Root "%s" not found.',
+            [lineNumber + 1, defaultWindowName.Text]
+          );
+
+        var EditWnd := ResolveEditHandle(RootWnd, ResolveAlias(parts[1]));
+        if EditWnd = 0 then
+          raise Exception.CreateFmt(
+            'Error on line %d. No Edit matched "%s" under "%s".',
+            [lineNumber + 1, ResolveAlias(parts[1]), defaultWindowName.Text]
+          );
+
+        SetEditText(EditWnd, ResolveAlias(parts[2]));
+        Exit(True);
+      end
+      else // Length(Parts) >= 4
+      begin
+        // -------- Explicit window form --------
+        // SetText <window> <field> <text...>
+
+        var RootWnd := ResolveRootWindow(ResolveAlias(parts[1]));
+        if RootWnd = 0 then
+          raise Exception.CreateFmt(
+            'Error on line %d. Root "%s" not found.',
+            [lineNumber + 1, parts[1]]
+          );
+
+        var EditWnd := ResolveEditHandle(RootWnd, ResolveAlias(parts[2]));
+        if EditWnd = 0 then
+          raise Exception.CreateFmt(
+            'Error on line %d. No Edit matched "%s" under "%s".',
+            [lineNumber + 1, ResolveAlias(parts[2]), parts[1]]
+          );
+
+        SetEditText(EditWnd, parts[3]);
+        Exit(True);
+
       end;
     end;
-  end
 
-  else if SameText(parts[0], 'PressKey') then
-  begin
-    // PressKey <key-or-chord>
-    // Examples:
-    // PressKey A
-    // PressKey 7
-    // PressKey F5
-    // PressKey Ctrl+Alt+F4
-    // PressKey Shift+Tab
-    // PressKey "Ctrl+Shift+ ="
-    if Length(parts) <> 2 then
-      raise Exception.CreateFmt(
-        'Error on line %d. PressKey usage: PressKey <key-or-chord>. e.g. PressKey A, PressKey Ctrl+Alt+F4, etc',
-        [lineNumber + 1]);
-
-    try
-      SendChord(parts[1]);
-      bOK := True;
-    except
-      on E: Exception do
-        raise Exception.CreateFmt(
-          'Error on line %d. PressKey failed: %s',
-          [lineNumber + 1, E.Message]);
-    end;
-  end
-
-  else if SameText(parts[0], 'DumpHere') then
-  begin
-    // Finds the deepest child under the cursor and shows full DumpWindow for its root window.
-    var pt: TPoint;
-    GetCursorPos(pt);
-
-    var child := DeepChildWindowFromPoint(pt);
-    if (child = 0) then
+    CmdClose:
     begin
-      ShowTextDialog('Error', 'DumpHere: No window under cursor.', 500, 200);
+      if Length(parts) <> 2 then
+        raise Exception.CreateFmt(
+          'Error on line %d. Close usage: Close <window name>',
+          [lineNumber + 1]);
+
+      CloseWindowByCaption(ResolveAlias(parts[1]));
+      bOK := True;
+    end;
+
+    CmdTypeText:
+    begin
+      if Length(parts) <> 2 then
+        raise Exception.CreateFmt(
+          'Error on line %d. TypeText usage: TypeText "some text"',
+          [lineNumber + 1]);
+
+      TypeText(parts[1]);
+      bOK := True;
+    end;
+
+    CmdTypePassword:
+    begin
+      // This is used to type a password into an edit control. The password is encrypted in the script file, and this command decrypts it before typing.
+      if ((Length(parts) <> 2) and (Length(parts) <> 4)) then
+        raise Exception.CreateFmt(
+          'Error on line %d. TypePassword usage: TypePassword "some encrypted text" | TypePassword "form|dialog" "control" "some encrypted text"',
+          [lineNumber + 1]);
+
+      if length(parts) = 2 then
+      begin
+        TypeText(DoCryptXOR('D', parts[1]));
+        bOK := True;
+      end
+      else if length(parts) = 4 then
+      begin
+        var WindowToken := ResolveAlias(parts[1]);
+        var FieldToken := ResolveAlias(parts[2]);
+        var W := RequireTopWindowFlexible(WindowToken);
+        var E := ResolveEditHandle(W, FieldToken);
+
+        if E = 0 then
+        begin
+          ShowTextDialog('Error', Format(
+            'Error on line %d. No Edit control matched "%s" in dialog "%s".' + CRLF + CRLF + '%s',
+            [lineNumber + 1, FieldToken, WindowToken, FormatEditsSummary(W)]), 500, 200);
+        end
+        else
+        begin
+          // rebuild text from tail (preserve spaces)
+          var Line := String.Join(' ', Parts);
+          var ArgStart := Pos(FieldToken, Line) + Length(FieldToken) + 1;
+          var Value := Trim(Copy(Line, ArgStart, MaxInt));
+
+          if SetEditText(E, DoCryptXOR('D', parts[3])) then
+            bOK := True;
+        end;
+      end;
+    end;
+
+    CmdPressKey:
+    begin
+      // PressKey <key-or-chord>
+      // Examples:
+      // PressKey A
+      // PressKey 7
+      // PressKey F5
+      // PressKey Ctrl+Alt+F4
+      // PressKey Shift+Tab
+      // PressKey "Ctrl+Shift+ ="
+      if Length(parts) <> 2 then
+        raise Exception.CreateFmt(
+          'Error on line %d. PressKey usage: PressKey <key-or-chord>. e.g. PressKey A, PressKey Ctrl+Alt+F4, etc',
+          [lineNumber + 1]);
+
+      try
+        SendChord(parts[1]);
+        bOK := True;
+      except
+        on E: Exception do
+          raise Exception.CreateFmt(
+            'Error on line %d. PressKey failed: %s',
+            [lineNumber + 1, E.Message]);
+      end;
+    end;
+
+    CmdDumpHere:
+    begin
+      // Finds the deepest child under the cursor and shows full DumpWindow for its root window.
+      var pt: TPoint;
+      GetCursorPos(pt);
+
+      var child := DeepChildWindowFromPoint(pt);
+      if (child = 0) then
+      begin
+        ShowTextDialog('Error', 'DumpHere: No window under cursor.', 500, 200);
+        Exit;
+      end;
+
+      var Root := GetAncestor(child, GA_ROOT);
+      if Root = 0 then
+        Root := child;
+
+      var Msg := Format('Under cursor: %s' + CRLF + CRLF, [DescribeAtPoint(pt)]);
+      Msg := Msg + 'Immediate children:' + CRLF + FormatWindowChildren(Root) + CRLF + CRLF +
+        'Descendant Edits:' + CRLF + FormatEditsSummary(Root) + CRLF + CRLF +
+        'Descendant Buttons:' + CRLF + FormatButtonsSummary(Root);
+      ShowTextDialog('Error', Msg);
+      bOK := True;
+    end;
+
+    CmdSetPause:
+    begin
+      // Sets the default pause time between commands. This is a global setting that affects all subsequent commands.
+      if Length(parts) = 2 then
+      begin
+        edtPauseTime.Text := parts[1];
+        Application.ProcessMessages;
+      end;
+
+      bOK := True;
+    end;
+
+    CmdSleep:
+    begin
+      // Pause execution for a specified number of milliseconds. If no time is specified, defaults to 1000 ms (1 second).
+      if Length(parts) <> 2 then
+        Sleep(1000)
+      else
+        Sleep(StrToInt(parts[1]));
+      bOK := True;
+    end;
+
+    CmdLaneTool:
+    begin
+      var FileName := 'C:\Apps\Inca\Bin\LaneTool.exe';
+      if FileExists(FileName) then
+        ShellExecute(0, 'open', PChar(FileName), nil, nil, SW_SHOWNORMAL)
+      else
+        ShowTextDialog('Error', Format('File %s was not found.', [FileName]), 500, 200);
+    end;
+
+    CmdLoad:
+    begin
+      // Loads a script file relative to the current script folder, the Clicker.exe folder, or C:\Scripts (in that order). The .script extension is optional.
+      if Length(parts) <> 2 then
+        raise Exception.CreateFmt(
+          '%s:%d Load <scriptName>',
+          [SourceName, lineNumber + 1]);
+
+      ScriptName := parts[1];
+      ScriptPath := ResolveScriptPath(ScriptName, SourceName);
+
+      RunScriptFile(ScriptPath);  // RECURSION
       Exit;
     end;
 
-    var Root := GetAncestor(child, GA_ROOT);
-    if Root = 0 then
-      Root := child;
-
-    var Msg := Format('Under cursor: %s' + CRLF + CRLF, [DescribeAtPoint(pt)]);
-    Msg := Msg + 'Immediate children:' + CRLF + FormatWindowChildren(Root) + CRLF + CRLF +
-      'Descendant Edits:' + CRLF + FormatEditsSummary(Root) + CRLF + CRLF +
-      'Descendant Buttons:' + CRLF + FormatButtonsSummary(Root);
-    ShowTextDialog('Error', Msg);
-    bOK := True;
-  end
-
-  else if SameText(parts[0], 'SetPause') then
-  begin
-    if Length(parts) = 2 then
+    CmdIf:
     begin
-      edtPauseTime.Text := parts[1];
-      Application.ProcessMessages;
+      // Usage:
+      // If Button <token> "expected"
+      // If Edit   <token> "expected"
+      // If Button "Window Name" <token> "expected"
+      // If Edit   "Window Name" <token> "expected"
+
+      var Kind, WindowName, Token, Expected: string;
+
+      if Length(parts) = 4 then
+      begin
+        // If Button <token> "expected"
+        Kind       := parts[1];
+        WindowName := defaultWindowName.Text;
+        Token      := ResolveAlias(parts[2]);
+        Expected   := parts[3];
+      end
+      else if Length(parts) = 5 then
+      begin
+        // If Button "Window Name" <token> "expected"
+        Kind       := parts[1];
+        WindowName := ResolveAlias(parts[2]);
+        Token      := ResolveAlias(parts[3]);
+        Expected   := parts[4];
+      end
+      else
+        raise Exception.CreateFmt(
+          '%s:%d If usage:' + CRLF +
+          '  If <Button|Edit> <token> "expected"' + CRLF +
+          '  If <Button|Edit> "Window Name" <token> "expected"',
+          [SourceName, lineNumber + 1]);
+
+      var W := RequireDialogFlexible(WindowName);
+
+      if SameText(Kind, 'Button') then
+      begin
+        var Btn := ResolveControl(W, Token, BUTTON_CLASS_NAMES);
+        if Btn = 0 then
+          raise Exception.CreateFmt(
+            '%s:%d Button "%s" not found in window "%s"',
+            [SourceName, lineNumber + 1, Token, WindowName]);
+
+        var Actual := GetWindowTextSafe(Btn);
+        if not SameText(Actual, Expected) then
+          raise Exception.CreateFmt(
+            '%s:%d Button "%s" text mismatch. Expected "%s", got "%s"',
+            [SourceName, lineNumber + 1, Token, Expected, Actual]);
+
+        bOK := True;
+      end
+      else if SameText(Kind, 'Edit') then
+      begin
+        var Edit := ResolveControl(W, Token, EDIT_CLASS_NAMES);
+        if Edit = 0 then
+          raise Exception.CreateFmt(
+            '%s:%d Edit "%s" not found in window "%s"',
+            [SourceName, lineNumber + 1, Token, WindowName]);
+
+        var Actual := GetEditText(Edit);
+        if not SameText(Actual, Expected) then
+          raise Exception.CreateFmt(
+            '%s:%d Edit "%s" text mismatch. Expected "%s", got "%s"',
+            [SourceName, lineNumber + 1, Token, Expected, Actual]);
+
+        bOK := True;
+      end
+      else
+        raise Exception.CreateFmt(
+          '%s:%d Unknown If target "%s". Use "Button" or "Edit"',
+          [SourceName, lineNumber + 1, Kind]);
     end;
 
-    bOK := True;
-  end
-
-  else if SameText(parts[0], 'Sleep') then
-  begin
-    if Length(parts) <> 2 then
-      Sleep(1000)
-    else
-      Sleep(StrToInt(parts[1]));
-    bOK := True;
-  end
-
-  else if SameText(parts[0], 'LaneTool') then
-  begin
-    var FileName := 'C:\Apps\Inca\Bin\LaneTool.exe';
-    if FileExists(FileName) then
-      ShellExecute(0, 'open', PChar(FileName), nil, nil, SW_SHOWNORMAL)
-    else
-      ShowTextDialog('Error', Format('File %s was not found.', [FileName]), 500, 200);
-  end
-
-  else if SameText(parts[0], 'Load') then
-  begin
-    if Length(parts) <> 2 then
-      raise Exception.CreateFmt(
-        '%s:%d Load <scriptName>',
-        [SourceName, lineNumber + 1]);
-
-    ScriptName := parts[1];
-    ScriptPath := ResolveScriptPath(ScriptName, SourceName);
-
-    RunScriptFile(ScriptPath);  // RECURSION
-    Exit;
-  end
-
-  else if SameText(parts[0], 'If') then
-  begin
-    // Usage:
-    // If Button <token> "expected"
-    // If Edit   <token> "expected"
-    // If Button "Window Name" <token> "expected"
-    // If Edit   "Window Name" <token> "expected"
-
-    var Kind, WindowName, Token, Expected: string;
-
-    if Length(parts) = 4 then
+    CmdAlias:
     begin
-      // If Button <token> "expected"
-      Kind       := parts[1];
-      WindowName := defaultWindowName.Text;
-      Token      := ResolveAlias(parts[2]);
-      Expected   := parts[3];
-    end
-    else if Length(parts) = 5 then
-    begin
-      // If Button "Window Name" <token> "expected"
-      Kind       := parts[1];
-      WindowName := ResolveAlias(parts[2]);
-      Token      := ResolveAlias(parts[3]);
-      Expected   := parts[4];
-    end
-    else
-      raise Exception.CreateFmt(
-        '%s:%d If usage:' + CRLF +
-        '  If <Button|Edit> <token> "expected"' + CRLF +
-        '  If <Button|Edit> "Window Name" <token> "expected"',
-        [SourceName, lineNumber + 1]);
+      // Usage:
+      // Alias <name> <value>
+      // Alias <name> <x> <y>
 
-    var W := RequireDialogFlexible(WindowName);
-
-    if SameText(Kind, 'Button') then
-    begin
-      var Btn := ResolveControl(W, Token, BUTTON_CLASS_NAMES);
-      if Btn = 0 then
+      if (Length(parts) <> 3) and (Length(parts) <> 4) then
         raise Exception.CreateFmt(
-          '%s:%d Button "%s" not found in window "%s"',
-          [SourceName, lineNumber + 1, Token, WindowName]);
+          '%s:%d Alias usage: Alias <name> <value> or Alias <name> <x> <y>',
+          [SourceName, lineNumber + 1]);
 
-      var Actual := GetWindowTextSafe(Btn);
-      if not SameText(Actual, Expected) then
+      var AliasName := parts[1];
+      var AliasValue: string;
+      if Length(parts) = 3 then
+        AliasValue := parts[2]
+      else
+      begin
+        var ScreenX, ScreenY: Integer;
+        if not TryStrToInt(parts[2], ScreenX) or
+          not TryStrToInt(parts[3], ScreenY) then
+          raise Exception.CreateFmt(
+            '%s:%d Coordinate alias "%s" requires integer X and Y coordinates',
+            [SourceName, lineNumber + 1, AliasName]);
+
+        AliasValue := Format('%s%d,%d',
+          [MOUSE_POINT_ALIAS_PREFIX, ScreenX, ScreenY]);
+      end;
+
+      // Prevent accidental overwrite
+      if FAliases.IndexOfName(AliasName) >= 0 then
         raise Exception.CreateFmt(
-          '%s:%d Button "%s" text mismatch. Expected "%s", got "%s"',
-          [SourceName, lineNumber + 1, Token, Expected, Actual]);
-
-      bOK := True;
-    end
-    else if SameText(Kind, 'Edit') then
-    begin
-      var Edit := ResolveControl(W, Token, EDIT_CLASS_NAMES);
-      if Edit = 0 then
-        raise Exception.CreateFmt(
-          '%s:%d Edit "%s" not found in window "%s"',
-          [SourceName, lineNumber + 1, Token, WindowName]);
-
-      var Actual := GetEditText(Edit);
-      if not SameText(Actual, Expected) then
-        raise Exception.CreateFmt(
-          '%s:%d Edit "%s" text mismatch. Expected "%s", got "%s"',
-          [SourceName, lineNumber + 1, Token, Expected, Actual]);
-
-      bOK := True;
-    end
-    else
-      raise Exception.CreateFmt(
-        '%s:%d Unknown If target "%s". Use "Button" or "Edit"',
-        [SourceName, lineNumber + 1, Kind]);
-  end
-
-  else if SameText(parts[0], 'Alias') then
-  begin
-    // Usage:
-    // Alias <name> <value>
-    // Alias <name> <x> <y>
-
-    if (Length(parts) <> 3) and (Length(parts) <> 4) then
-      raise Exception.CreateFmt(
-        '%s:%d Alias usage: Alias <name> <value> or Alias <name> <x> <y>',
-        [SourceName, lineNumber + 1]);
-
-    var AliasName := parts[1];
-    var AliasValue: string;
-    if Length(parts) = 3 then
-      AliasValue := parts[2]
-    else
-    begin
-      var ScreenX, ScreenY: Integer;
-      if not TryStrToInt(parts[2], ScreenX) or
-        not TryStrToInt(parts[3], ScreenY) then
-        raise Exception.CreateFmt(
-          '%s:%d Coordinate alias "%s" requires integer X and Y coordinates',
+          '%s:%d Alias "%s" already defined',
           [SourceName, lineNumber + 1, AliasName]);
 
-      AliasValue := Format('%s%d,%d',
-        [MOUSE_POINT_ALIAS_PREFIX, ScreenX, ScreenY]);
+      FAliases.Values[AliasName] := AliasValue;
+      bOK := True;
     end;
 
-    // Prevent accidental overwrite
-    if FAliases.IndexOfName(AliasName) >= 0 then
+    else
+    begin
       raise Exception.CreateFmt(
-        '%s:%d Alias "%s" already defined',
-        [SourceName, lineNumber + 1, AliasName]);
-
-    FAliases.Values[AliasName] := AliasValue;
-    bOK := True;
-  end
-
-  else
-  begin
-    raise Exception.CreateFmt(
-      '%s:%d Unknown command "%s"',
-      [SourceName, lineNumber + 1, parts[0]]);
+        '%s:%d Unknown command "%s"',
+        [SourceName, lineNumber + 1, parts[0]]);
+    end;
   end;
 
   Result := bOK;
