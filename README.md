@@ -8,7 +8,18 @@ It has the following features:
 - Can record buttons, mouse clicks, wheel scrolling, typed text, and keyboard shortcuts as scripts
 - Can toggle the live hover text inspector on or off
 - Can automatically run a script via command line arguments
+- Can run scripts in console mode and print script output to standard output
 - Comments
+
+Run a script without opening the editor:
+
+```text
+Clicker.exe --console path\to\script.script
+```
+
+Console mode returns exit code `0` on success and `1` if the script or program
+encounters an error. The existing `Clicker.exe <script-file>` invocation
+continues to run the script in the GUI.
 
 It can perform the following tasks:
 - ClickButton

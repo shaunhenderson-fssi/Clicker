@@ -257,11 +257,67 @@ var
   IDs: Array of Integer;
   LastTopWindow: HWND;
   FAliases: TStringList;
+  ConsoleMode: Boolean = False;
+  ConsoleExitCode: Integer = 0;
+
+procedure InitializeConsoleOutput;
+procedure WriteConsoleText(const Text: string);
 
 implementation
 
 {$R *.dfm}
 { ===================== Mouse inspector (unit-scope) ===================== }
+
+procedure InitializeConsoleOutput;
+begin
+  if not AttachConsole(DWORD(-1)) and (GetConsoleWindow = 0) then
+    if not AllocConsole then
+      RaiseLastOSError;
+
+  if not SetConsoleOutputCP(65001) then
+    RaiseLastOSError;
+end;
+
+procedure WriteConsoleText(const Text: string);
+var
+  StdOut: THandle;
+  ConsoleModeValue: DWORD;
+  CharsWritten, BytesWritten: DWORD;
+  Index, ChunkLength: Integer;
+  Utf8Text: TBytes;
+begin
+  StdOut := GetStdHandle(STD_OUTPUT_HANDLE);
+  if (StdOut = 0) or (StdOut = INVALID_HANDLE_VALUE) then
+    raise Exception.Create('Standard output is not available.');
+
+  if GetConsoleMode(StdOut, ConsoleModeValue) then
+  begin
+    Index := 1;
+    while Index <= Length(Text) do
+    begin
+      ChunkLength := Min(Length(Text) - Index + 1, 32768);
+      if not WriteConsoleW(StdOut, @Text[Index], ChunkLength, CharsWritten, nil) then
+        RaiseLastOSError;
+      if CharsWritten = 0 then
+        raise Exception.Create('Could not write to the console.');
+      Inc(Index, CharsWritten);
+    end;
+  end
+  else
+  begin
+    Utf8Text := TEncoding.UTF8.GetBytes(Text);
+    Index := 0;
+    while Index < Length(Utf8Text) do
+    begin
+      ChunkLength := Min(Length(Utf8Text) - Index, 32768);
+      if not WriteFile(StdOut, Utf8Text[Index], ChunkLength, BytesWritten, nil) then
+        RaiseLastOSError;
+      if BytesWritten = 0 then
+        raise Exception.Create('Could not write to standard output.');
+      Inc(Index, BytesWritten);
+    end;
+  end;
+end;
 
 type
   PMacroKeyboardHookInfo = ^TMacroKeyboardHookInfo;
@@ -614,7 +670,19 @@ var
   F: TForm;
   M: TMemo;
   B: TButton;
+  OutputText: string;
 begin
+  if ConsoleMode then
+  begin
+    OutputText := Text;
+    if OutputText = '' then
+      OutputText := sLineBreak
+    else if OutputText[Length(OutputText)] <> #10 then
+      OutputText := OutputText + sLineBreak;
+    WriteConsoleText(OutputText);
+    Exit;
+  end;
+
   F := TForm.Create(nil);
   try
     F.Caption := Title;
@@ -2438,22 +2506,32 @@ begin
   FAliases.StrictDelimiter := True;
   FAliases.Delimiter := '=';
 
-  if ParamCount >= 1 then
+  if ConsoleMode then
   begin
+    if ParamCount <> 2 then
+      raise Exception.Create('Usage: Clicker.exe --console <script-file>');
+    FScriptFilename := ParamStr(2);
+  end
+  else if ParamCount >= 1 then
     FScriptFilename := ParamStr(1);
 
-    //Load script then click Run
+  if FScriptFilename <> '' then
+  begin
     if FileExists(FScriptFilename) then
     begin
       mmoScript.Lines.LoadFromFile(FScriptFilename);
 
-      RunScriptProc :=
-        procedure
-        begin
-          btnGo.Click;
-        end;
-      TThread.Queue(nil, RunScriptProc);
-
+      if ConsoleMode then
+        btnGoClick(Self)
+      else
+      begin
+        RunScriptProc :=
+          procedure
+          begin
+            btnGo.Click;
+          end;
+        TThread.Queue(nil, RunScriptProc);
+      end;
     end
     else
       raise Exception.CreateFmt('Script file not found: %s', [FScriptFilename]);
@@ -3173,6 +3251,8 @@ begin
       mmoLineNumbers.Lines[lineNumber] := Format('%s %d', [ERROR, lineNumber + 1]);
       lblStatus.Caption := 'Completed with error';
       Application.ProcessMessages;
+      if ConsoleMode then
+        ConsoleExitCode := 1;
       ShowTextDialog('Error', Format(
         'Error on line %d. Command in %s failed.' + CRLF + '%s',
         [lineNumber, SourceName, Line]));
@@ -3893,19 +3973,29 @@ begin
   FAliases.Clear;
   Script := TStringList.Create;
   try
-    Script.Text := mmoScript.Text;
+    try
+      Script.Text := mmoScript.Text;
 
-    // Expand all Load commands first
-    ExpandLoadCommands(Script, FScriptFilename);
+      // Expand all Load commands first
+      ExpandLoadCommands(Script, FScriptFilename);
 
-    // Optional: reflect expansion back into editor
-    mmoScript.Text := Script.Text;
+      // Optional: reflect expansion back into editor
+      mmoScript.Text := Script.Text;
 
-    // Now execute
-    RunScriptLines(Script, 'MainScript');
-  finally
-    Script.Free;
-    btnGo.Enabled := True;
+      // Now execute
+      RunScriptLines(Script, 'MainScript');
+    finally
+      Script.Free;
+      btnGo.Enabled := True;
+    end;
+  except
+    on E: Exception do
+    begin
+      if not ConsoleMode then
+        raise;
+      ConsoleExitCode := 1;
+      WriteConsoleText('Fatal error: ' + E.Message + sLineBreak);
+    end;
   end;
 end;
 
