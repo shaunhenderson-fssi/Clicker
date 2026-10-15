@@ -1087,7 +1087,8 @@ begin
 end;
 
 /// <summary>
-/// Strips inline comments from a string.
+/// Strips inline comments from a string. Comment markers inside quoted text
+/// are ignored, and a valid Assert Color hex value is not treated as a comment.
 /// </summary>
 /// <param name="S">String to process</param>
 /// <returns>The result of S, with inline comments stripped out.</returns>
@@ -1096,9 +1097,44 @@ var
   i: Integer;
   inQuote: Boolean;
   ch: Char;
+  IsHexColor: Boolean;
+  HexColorConsumed: Boolean;
+
+  function IsAssertColorValuePosition(const Prefix: string): Boolean;
+  var
+    PrefixTokens: TStringList;
+    ScreenX, ScreenY: Integer;
+  begin
+    PrefixTokens := TStringList.Create;
+    try
+      PrefixTokens.StrictDelimiter := True;
+      PrefixTokens.Delimiter := ' ';
+      PrefixTokens.QuoteChar := '"';
+      PrefixTokens.DelimitedText := Trim(Prefix);
+      for var TokenIndex := PrefixTokens.Count - 1 downto 0 do
+        if PrefixTokens[TokenIndex] = '' then
+          PrefixTokens.Delete(TokenIndex);
+
+      Result := False;
+      if PrefixTokens.Count <> 4 then
+        Exit;
+      if not SameText(PrefixTokens[0], 'Assert') then
+        Exit;
+      if not SameText(PrefixTokens[1], 'Color') then
+        Exit;
+
+      if not TryStrToInt(PrefixTokens[2], ScreenX) then
+        Exit;
+      Result := TryStrToInt(PrefixTokens[3], ScreenY);
+    finally
+      PrefixTokens.Free;
+    end;
+  end;
+
 begin
   Result := Trim(S);
   inQuote := False;
+  HexColorConsumed := False;
   i := 1;
   while i <= Length(S) do
   begin
@@ -1115,9 +1151,37 @@ begin
       else
         inQuote := not inQuote;
     end
-    else if ((ch = ';') or (ch = '#')) and not inQuote then
+    else if (ch = ';') and not inQuote then
     begin
       // comment begins here; truncate
+      Result := Trim(Copy(S, 1, i - 1));
+      Exit;
+    end;
+    if (ch = '#') and not inQuote then
+    begin
+      IsHexColor := not HexColorConsumed and
+        IsAssertColorValuePosition(Copy(S, 1, i - 1)) and
+        (i + 6 <= Length(S));
+      if IsHexColor then
+        for var HexIndex := i + 1 to i + 6 do
+          if not CharInSet(S[HexIndex], ['0'..'9', 'a'..'f', 'A'..'F']) then
+            IsHexColor := False;
+
+      if IsHexColor and
+        ((i + 6 = Length(S)) or CharInSet(S[i + 7], [#9, ' '])) then
+      begin
+        HexColorConsumed := True;
+        Inc(i, 7);
+        Continue;
+      end;
+
+      // A hash not followed by a complete color token starts a comment.
+      Result := Trim(Copy(S, 1, i - 1));
+      Exit;
+    end;
+
+    if (ch = '/') and (i < Length(S)) and (S[i + 1] = '/') and not inQuote then
+    begin
       Result := Trim(Copy(S, 1, i - 1));
       Exit;
     end;
@@ -3189,6 +3253,10 @@ begin
     SL.Add('  Assert <"Button"|"Edit"> <WindowName> <name|id|hwnd> "Expected text"');
     SL.Add('    The script will continue only when the expected text is found');
     SL.Add('    If WindowName is omitted, it will default to what is in the default window box');
+    SL.Add('  Assert Color <x> <y> <#RRGGBB|colorName>');
+    SL.Add('    Checks the pixel color at the specified screen coordinates, e.g. Assert Color 121 254 #1a2b3c or Assert Color 321 222 red');
+    SL.Add('    Samples up to 10 times, 100 ms apart; the expected color must match at least 8 samples.');
+    SL.Add('    Custom color: clYellowPNS is RGB 254,216,3 (#FED803)');
     SL.Add('  Close <windowName>');
     SL.Add('    Closes a window or dialog');
     SL.Add('  Stop');
@@ -3919,10 +3987,94 @@ begin
       // Assert Edit   <token> "expected"
       // Assert Button "Window Name" <token> "expected"
       // Assert Edit   "Window Name" <token> "expected"
+      // Assert Color X Y "named color"
+      // Assert Color X Y "#HEX_CODE"
 
       var Kind, WindowName, Token, Expected: string;
 
-      if Length(parts) = 4 then
+      if (Length(parts) = 5) and SameText(parts[1], 'Color') then
+      begin
+
+        const numberOfTimesToLoop = 10; //sometimes SCO uses animations, so we loop around to get a more accurate reading
+        const numberOfTimesToMatch = 8; //we need to match at least 8 of the 10 samples (80%)
+        const sleepTimeBetweenSamples = 100; //ms 10 * 100 = 1000 (1 second) total
+
+        Kind := parts[1];
+        var ScreenX, ScreenY: Integer;
+        if not TryStrToInt(parts[2], ScreenX) or not TryStrToInt(parts[3], ScreenY) then
+          raise Exception.CreateFmt(
+            '%s:%d Assert Color coordinates must be integers',
+            [SourceName, lineNumber + 1]);
+
+        var ExpectedColor: TColor;
+        if (Length(parts[4]) = 7) and (parts[4][1] = '#') then
+        begin
+          var HexValue: Integer;
+          if not TryStrToInt('$' + Copy(parts[4], 2, 6), HexValue) then
+            raise Exception.CreateFmt(
+              '%s:%d Invalid Assert Color value "%s". Expected #RRGGBB or a color name',
+              [SourceName, lineNumber + 1, parts[4]]);
+          ExpectedColor := RGB((HexValue shr 16) and $FF, (HexValue shr 8) and $FF, HexValue and $FF);
+        end
+        else
+        begin
+          if SameText(parts[4], 'clYellowPNS') or SameText(parts[4], 'YellowPNS') then
+            ExpectedColor := RGB(254, 216, 3)
+          else
+          begin
+            try
+              if SameText(Copy(parts[4], 1, 2), 'cl') then
+                ExpectedColor := StringToColor(parts[4])
+              else
+                ExpectedColor := StringToColor('cl' + parts[4]);
+            except
+              on E: EConvertError do
+                raise Exception.CreateFmt(
+                  '%s:%d Unknown Assert Color name "%s"',
+                  [SourceName, lineNumber + 1, parts[4]]);
+            end;
+          end;
+        end;
+
+        var ScreenDC := GetDC(0);
+        if ScreenDC = 0 then
+          raise Exception.CreateFmt(
+            '%s:%d Unable to access the screen to check pixel color',
+            [SourceName, lineNumber + 1]);
+
+        var ActualColor: COLORREF;
+        ActualColor := GetPixel(ScreenDC, ScreenX, ScreenY);
+
+        try
+          var MatchCount := 0;
+          for var Sample := 1 to numberOfTimesToLoop do //loop around due to animations on SCO
+          begin
+            if ActualColor = CLR_INVALID then
+              raise Exception.CreateFmt(
+                '%s:%d Unable to read screen pixel at (%d, %d)',
+                [SourceName, lineNumber + 1, ScreenX, ScreenY]);
+
+            if ActualColor = COLORREF(ExpectedColor) then
+              Inc(MatchCount);
+
+            if MatchCount >= numberOfTimesToMatch then
+              Break;
+
+            if Sample < numberOfTimesToLoop then
+              Sleep(sleepTimeBetweenSamples);
+          end;
+
+          if MatchCount < numberOfTimesToMatch then
+            raise Exception.CreateFmt(
+              '%s:%d Pixel color mismatch at (%d, %d). Expected %s in at least %d%% of samples; matched %d. Last sample was #%6.6x',
+              [SourceName, lineNumber + 1, ScreenX, ScreenY, parts[4], Round(numberOfTimesToMatch / numberOfTimesToLoop * 100), MatchCount, ActualColor]);
+        finally
+          ReleaseDC(0, ScreenDC);
+        end;
+
+        bOK := True;
+      end
+      else if (Length(parts) = 4) and not SameText(parts[1], 'Color') then
       begin
         // Assert Button <token> "expected"
         Kind       := parts[1];
@@ -3942,47 +4094,51 @@ begin
         raise Exception.CreateFmt(
           '%s:%d Assert usage:' + CRLF +
           '  Assert <Button|Edit> <token> "expected"' + CRLF +
-          '  Assert <Button|Edit> "Window Name" <token> "expected"',
+          '  Assert <Button|Edit> "Window Name" <token> "expected"' + CRLF +
+          '  Assert Color <x> <y> <#RRGGBB|colorName>',
           [SourceName, lineNumber + 1]);
 
-      var W := RequireDialogFlexible(WindowName);
-
-      if SameText(Kind, 'Button') then
+      if not SameText(Kind, 'Color') then
       begin
-        var Btn := ResolveControl(W, Token, BUTTON_CLASS_NAMES);
-        if Btn = 0 then
-          raise Exception.CreateFmt(
-            '%s:%d Button "%s" not found in window "%s"',
-            [SourceName, lineNumber + 1, Token, WindowName]);
+        var W := RequireDialogFlexible(WindowName);
 
-        var Actual := GetWindowTextSafe(Btn);
-        if not SameText(Actual, Expected) then
-          raise Exception.CreateFmt(
-            '%s:%d Button "%s" text mismatch. Expected "%s", got "%s"',
-            [SourceName, lineNumber + 1, Token, Expected, Actual]);
+        if SameText(Kind, 'Button') then
+        begin
+          var Btn := ResolveControl(W, Token, BUTTON_CLASS_NAMES);
+          if Btn = 0 then
+            raise Exception.CreateFmt(
+              '%s:%d Button "%s" not found in window "%s"',
+              [SourceName, lineNumber + 1, Token, WindowName]);
 
-        bOK := True;
-      end
-      else if SameText(Kind, 'Edit') then
-      begin
-        var Edit := ResolveControl(W, Token, EDIT_CLASS_NAMES);
-        if Edit = 0 then
-          raise Exception.CreateFmt(
-            '%s:%d Edit "%s" not found in window "%s"',
-            [SourceName, lineNumber + 1, Token, WindowName]);
+          var Actual := GetWindowTextSafe(Btn);
+          if not SameText(Actual, Expected) then
+            raise Exception.CreateFmt(
+              '%s:%d Button "%s" text mismatch. Expected "%s", got "%s"',
+              [SourceName, lineNumber + 1, Token, Expected, Actual]);
 
-        var Actual := GetEditText(Edit);
-        if not SameText(Actual, Expected) then
-          raise Exception.CreateFmt(
-            '%s:%d Edit "%s" text mismatch. Expected "%s", got "%s"',
-            [SourceName, lineNumber + 1, Token, Expected, Actual]);
+          bOK := True;
+        end
+        else if SameText(Kind, 'Edit') then
+        begin
+          var Edit := ResolveControl(W, Token, EDIT_CLASS_NAMES);
+          if Edit = 0 then
+            raise Exception.CreateFmt(
+              '%s:%d Edit "%s" not found in window "%s"',
+              [SourceName, lineNumber + 1, Token, WindowName]);
 
-        bOK := True;
-      end
-      else
-        raise Exception.CreateFmt(
-          '%s:%d Unknown Assert target "%s". Use "Button" or "Edit"',
-          [SourceName, lineNumber + 1, Kind]);
+          var Actual := GetEditText(Edit);
+          if not SameText(Actual, Expected) then
+            raise Exception.CreateFmt(
+              '%s:%d Edit "%s" text mismatch. Expected "%s", got "%s"',
+              [SourceName, lineNumber + 1, Token, Expected, Actual]);
+
+          bOK := True;
+        end
+        else
+          raise Exception.CreateFmt(
+            '%s:%d Unknown Assert target "%s". Use "Button" or "Edit"',
+            [SourceName, lineNumber + 1, Kind]);
+      end;
     end;
 
     CmdAlias:

@@ -37,11 +37,24 @@ It can perform the following tasks:
 - If <"Button"|"Edit"> <WindowName> <name|id|hwnd> "Expected text"
 - Close <windowName>
 - Stop (halts the current script immediately and skips remaining commands)
+- Assert Color <x> <y> <#RRGGBB|colorName>
 - LaneTool
 - DumpWindow <windowName>
 - DumpHere
 
+`Assert Color` checks a screen pixel, for example `Assert Color 121 254 #1a2b3c`
+or `Assert Color 321 222 red`. The custom named color `clYellowPNS` is also
+available and is equivalent to `#FED803` (RGB 254,216,3). A color mismatch
+stops the script with an error. It samples up to 10 times at 100 ms intervals
+and passes when at least 8 samples match the expected color.
+
 In the program, use Help > Reference to get a list of commands and an explanation of usage
+
+Script lines support inline comments beginning with `;`, `#`, or `//`. The
+comment marker and everything after it are ignored through the end of the line.
+Comment markers inside double-quoted text are preserved. A `#RRGGBB` value
+used by `Assert Color` is treated as a color, not a comment; other `#` markers
+start comments.
 
 Use the Record button to start capturing input and Stop to finish. The recorded
 commands appear in the script editor; use File > Save to save them as a `.script`
