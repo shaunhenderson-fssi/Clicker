@@ -3183,7 +3183,7 @@ begin
     SL.Add('  SetPause <time>');
     SL.Add('    Sets the default time (in ms) between commands, the default is 100 ms');
     SL.Add('  Sleep <milliseconds>');
-    SL.Add('    Pauses execution, default is 1 second. Also see the "Default pause time" at the top of the window');
+    SL.Add('    Pauses execution for the specified time (default is 1 second). The default pause time is not added after Sleep.');
     SL.Add('  Alias <name> <value> or Alias <name> <x> <y>');
     SL.Add('    Defines a reusable value or screen-coordinate alias, e.g. Alias zero 839 636 then MouseClick zero');
     SL.Add('  If <"Button"|"Edit"> <WindowName> <name|id|hwnd> "Expected text"');
@@ -3291,7 +3291,8 @@ begin
       Exit;
     end;
 
-    Sleep(StrToIntDef(edtPauseTime.Text, 100));
+    if not SameText(parts[0], 'Sleep') then
+      Sleep(StrToIntDef(edtPauseTime.Text, 100));
   end;
 
   lblStatus.Caption := 'Completed all tasks';
