@@ -36,6 +36,7 @@ It can perform the following tasks:
 - Alias <name> <value>
 - If <"Button"|"Edit"> <WindowName> <name|id|hwnd> "Expected text"
 - Close <windowName>
+- Stop (halts the current script immediately and skips remaining commands)
 - LaneTool
 - DumpWindow <windowName>
 - DumpHere

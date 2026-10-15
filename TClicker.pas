@@ -138,6 +138,7 @@ type
 
   private
     FScriptFilename: string;
+    FStopRequested: Boolean;
     FRecording: Boolean;
     FRecordedText: string;
     FEncryptInput: TEdit;
@@ -230,7 +231,8 @@ type
     CmdSleep,
     CmdLanetool,
     CmdIf,
-    CmdAlias
+    CmdAlias,
+    CmdStop
   );
 
 const
@@ -2519,6 +2521,7 @@ var
 begin
   FInspectorOverlay := TInspectorOverlay.Create(nil);
   FHasInspectorPos := False;
+  FStopRequested := False;
   FRecording := False;
   FScriptFilename := '';
   GRecorderForm := Self;
@@ -3188,6 +3191,8 @@ begin
     SL.Add('    If WindowName is omitted, it will default to what is in the default window box');
     SL.Add('  Close <windowName>');
     SL.Add('    Closes a window or dialog');
+    SL.Add('  Stop');
+    SL.Add('    Stops the current script immediately; all remaining commands are skipped');
     SL.Add('  LaneTool');
     SL.Add('    Runs the LaneTool program if it exists. Useful on SCOs to stop NCR full screen application. This is the only exe that can be run, so dont get any ideas');
     SL.Add('  DumpWindow <windowName>');
@@ -3277,6 +3282,12 @@ begin
       ShowTextDialog('Error', Format(
         'Error on line %d. Command in %s failed.' + CRLF + '%s',
         [lineNumber, SourceName, Line]));
+      Exit;
+    end;
+
+    if FStopRequested then
+    begin
+      lblStatus.Caption := 'Stopped';
       Exit;
     end;
 
@@ -3510,6 +3521,8 @@ var
       Exit(CmdLaneTool);
     if SameText(S, 'Alias') then
       Exit(CmdAlias);
+    if SameText(S, 'Stop') then
+      Exit(CmdStop);
     if SameText(S, 'If') then
       Exit(CmdIf);
 
@@ -3884,7 +3897,18 @@ begin
       ScriptPath := ResolveScriptPath(ScriptName, SourceName);
 
       RunScriptFile(ScriptPath);  // RECURSION
-      Exit;
+      bOK := True;
+    end;
+
+    CmdStop:
+    begin
+      if Length(parts) <> 1 then
+        raise Exception.CreateFmt(
+          '%s:%d Stop does not accept arguments',
+          [SourceName, lineNumber + 1]);
+
+      FStopRequested := True;
+      bOK := True;
     end;
 
     CmdIf:
@@ -4041,6 +4065,7 @@ var
   Script: TStringList;
 begin
   btnGo.Enabled := False; //stop infinite loop and "PressKey Enter" from clicking this button because it is enabled and active
+  FStopRequested := False;
   FAliases.Clear;
   Script := TStringList.Create;
   try
