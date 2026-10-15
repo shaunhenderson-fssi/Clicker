@@ -230,7 +230,7 @@ type
     CmdSetPause,
     CmdSleep,
     CmdLanetool,
-    CmdIf,
+    CmdAssert,
     CmdAlias,
     CmdStop
   );
@@ -3185,9 +3185,9 @@ begin
     SL.Add('  Sleep <milliseconds>');
     SL.Add('    Pauses execution for the specified time (default is 1 second). The default pause time is not added after Sleep.');
     SL.Add('  Alias <name> <value> or Alias <name> <x> <y>');
-    SL.Add('    Defines a reusable value or screen-coordinate alias, e.g. Alias zero 839 636 then MouseClick zero');
-    SL.Add('  If <"Button"|"Edit"> <WindowName> <name|id|hwnd> "Expected text"');
-    SL.Add('    Similar to an assert function. The script will continue only when the expected text is found. There is no "else" function');
+    SL.Add('    Defines a reusable value or screen-coordinate alias, e.g. `Alias zero 839 636` then `MouseClick zero`');
+    SL.Add('  Assert <"Button"|"Edit"> <WindowName> <name|id|hwnd> "Expected text"');
+    SL.Add('    The script will continue only when the expected text is found');
     SL.Add('    If WindowName is omitted, it will default to what is in the default window box');
     SL.Add('  Close <windowName>');
     SL.Add('    Closes a window or dialog');
@@ -3524,8 +3524,8 @@ var
       Exit(CmdAlias);
     if SameText(S, 'Stop') then
       Exit(CmdStop);
-    if SameText(S, 'If') then
-      Exit(CmdIf);
+    if SameText(S, 'Assert') then
+      Exit(CmdAssert);
 
     raise Exception.CreateFmt('Unknown command: %s', [S]);
   end;
@@ -3912,19 +3912,19 @@ begin
       bOK := True;
     end;
 
-    CmdIf:
+    CmdAssert:
     begin
       // Usage:
-      // If Button <token> "expected"
-      // If Edit   <token> "expected"
-      // If Button "Window Name" <token> "expected"
-      // If Edit   "Window Name" <token> "expected"
+      // Assert Button <token> "expected"
+      // Assert Edit   <token> "expected"
+      // Assert Button "Window Name" <token> "expected"
+      // Assert Edit   "Window Name" <token> "expected"
 
       var Kind, WindowName, Token, Expected: string;
 
       if Length(parts) = 4 then
       begin
-        // If Button <token> "expected"
+        // Assert Button <token> "expected"
         Kind       := parts[1];
         WindowName := defaultWindowName.Text;
         Token      := ResolveAlias(parts[2]);
@@ -3932,7 +3932,7 @@ begin
       end
       else if Length(parts) = 5 then
       begin
-        // If Button "Window Name" <token> "expected"
+        // Assert Button "Window Name" <token> "expected"
         Kind       := parts[1];
         WindowName := ResolveAlias(parts[2]);
         Token      := ResolveAlias(parts[3]);
@@ -3940,9 +3940,9 @@ begin
       end
       else
         raise Exception.CreateFmt(
-          '%s:%d If usage:' + CRLF +
-          '  If <Button|Edit> <token> "expected"' + CRLF +
-          '  If <Button|Edit> "Window Name" <token> "expected"',
+          '%s:%d Assert usage:' + CRLF +
+          '  Assert <Button|Edit> <token> "expected"' + CRLF +
+          '  Assert <Button|Edit> "Window Name" <token> "expected"',
           [SourceName, lineNumber + 1]);
 
       var W := RequireDialogFlexible(WindowName);
@@ -3981,7 +3981,7 @@ begin
       end
       else
         raise Exception.CreateFmt(
-          '%s:%d Unknown If target "%s". Use "Button" or "Edit"',
+          '%s:%d Unknown Assert target "%s". Use "Button" or "Edit"',
           [SourceName, lineNumber + 1, Kind]);
     end;
 
