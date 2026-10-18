@@ -260,17 +260,6 @@ const
   IID_IUIAutomationElement: TGUID = '{D22108AA-8AC5-49A5-837B-37BBB3D7591E}';
   IID_IUIAutomationInvokePattern: TGUID = '{FB377FBE-8EA6-46D5-9C73-6499642D3059}';
 
-  CmdColorMap: array [0 .. 11] of record Cmd: string;
-  Color: TColor;
-  end = ((Cmd: '#'; Color: clGray), (Cmd: 'DumpWindow'; Color: clRed),
-    (Cmd: 'DumpHere'; Color: clRed), (Cmd: 'ClickButton'; Color: clGreen),
-    (Cmd: 'ClickElement'; Color: clGreen), (Cmd: 'MouseClick'; Color: clGreen),
-    (Cmd: 'PressKey'; Color: clBlue), (Cmd: 'SetText'; Color: clBlue),
-    (Cmd: 'TypeText'; Color: clBlue), (Cmd: 'Close'; Color: $0000A5FF), // orange-ish
-    (Cmd: 'Sleep'; Color: $00FF00FF), // purple
-    (Cmd: 'MouseWheel'; Color: clGreen)
-  );
-
   // Treat these as "edit-like" window classes
   EDIT_CLASS_NAMES: array [0 .. 4] of PChar = ('Edit', 'TEdit', 'TAKPEdit', 'TAKPScanEdit', 'TRichEdit');
 
