@@ -139,6 +139,7 @@ type
   private
     FScriptFilename: string;
     FStopRequested: Boolean;
+    FScriptRunning: Boolean;
     FRecording: Boolean;
     FRecordedText: string;
     FEncryptInput: TEdit;
@@ -159,6 +160,7 @@ type
     function SetEditText(Edit: HWND; const Value: string): Boolean;
     procedure RunScriptFile(FileName: string);
     procedure RunScriptLines(Lines: TStrings; const SourceName: string);
+    procedure PauseForScript(Duration: Cardinal);
     procedure ClickElementInternal(const WindowName: string; var Token: string);
     function ExecuteCommand(const parts: TArray<string>; lineNumber: Integer; const SourceName: string): Boolean;
   end;
@@ -2168,6 +2170,7 @@ begin
   FInspectorOverlay := TInspectorOverlay.Create(nil);
   FHasInspectorPos := False;
   FStopRequested := False;
+  FScriptRunning := False;
   FRecording := False;
   FScriptFilename := '';
   GRecorderForm := Self;
@@ -2964,6 +2967,12 @@ var
 begin
   for lineNumber := 0 to Lines.Count - 1 do
   begin
+    if FStopRequested then
+    begin
+      lblStatus.Caption := 'Stopped';
+      Exit;
+    end;
+
     Line := Trim(Lines[lineNumber]);
     if Line = '' then
       Continue;
@@ -2977,6 +2986,11 @@ begin
       [SourceName, lineNumber + 1, Line]);
 
     Application.ProcessMessages;
+    if FStopRequested then
+    begin
+      lblStatus.Caption := 'Stopped';
+      Exit;
+    end;
 
     // ---- COMMAND DISPATCH ----
     mmoLineNumbers.Lines[lineNumber] := Format('%s %d', [RUNNING, lineNumber + 1]);
@@ -3003,10 +3017,33 @@ begin
     end;
 
     if not SameText(parts[0], 'Sleep') then
-      Sleep(StrToIntDef(edtPauseTime.Text, 100));
+      PauseForScript(StrToIntDef(edtPauseTime.Text, 100));
+
+    if FStopRequested then
+    begin
+      lblStatus.Caption := 'Stopped';
+      Exit;
+    end;
   end;
 
   lblStatus.Caption := 'Completed all tasks';
+end;
+
+procedure TForm1.PauseForScript(Duration: Cardinal);
+var
+  Step: Cardinal;
+begin
+  while (Duration > 0) and not FStopRequested do
+  begin
+    if Duration > 50 then
+      Step := 50
+    else
+      Step := Duration;
+
+    Sleep(Step);
+    Dec(Duration, Step);
+    Application.ProcessMessages;
+  end;
 end;
 
 /// <summary>
@@ -3889,9 +3926,9 @@ begin
     begin
       // Pause execution for a specified number of milliseconds. If no time is specified, defaults to 1000 ms (1 second).
       if Length(parts) <> 2 then
-        Sleep(1000)
+        PauseForScript(1000)
       else
-        Sleep(StrToInt(parts[1]));
+        PauseForScript(StrToInt(parts[1]));
       bOK := True;
     end;
 
@@ -4171,8 +4208,16 @@ procedure TForm1.btnGoClick(Sender: TObject);
 var
   Script: TStringList;
 begin
-  btnGo.Enabled := False; //stop infinite loop and "PressKey Enter" from clicking this button because it is enabled and active
+  if FScriptRunning then
+  begin
+    FStopRequested := True;
+    Exit;
+  end;
+
+  FScriptRunning := True;
   FStopRequested := False;
+  btnGo.Caption := 'Stop';
+  btnGo.ImageIndex := 1;
   FAliases.Clear;
   Script := TStringList.Create;
   try
@@ -4189,6 +4234,9 @@ begin
       RunScriptLines(Script, 'MainScript');
     finally
       Script.Free;
+      FScriptRunning := False;
+      btnGo.Caption := 'Run';
+      btnGo.ImageIndex := 0;
       btnGo.Enabled := True;
     end;
   except
