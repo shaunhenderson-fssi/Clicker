@@ -32,8 +32,8 @@
   outline and control details beside the mouse cursor.
 
   - Script files are loaded and saved using btnLoad and btnSave. The
-  filename is tracked in FScriptFilename so the Save button can be
-  enabled/disabled appropriately. Files have a .script extension.
+  filename is tracked in FScriptFilename, and FScriptModified tracks
+  unsaved editor changes. Files have a .script extension.
 
   - Automation helpers (ClickButtonSmart, ClickButtonByCaption,
   SetEditText, LeftClickAt, CloseWindowByCaption, etc.) wrap WinAPI
@@ -127,6 +127,7 @@ type
     procedure chkHoverTextClick(Sender: TObject);
     procedure tmrInspectorTimer(Sender: TObject);
     procedure mmoScriptChange(Sender: TObject);
+    procedure New1Click(Sender: TObject);
     procedure btnLoadClick(Sender: TObject);
     procedure btnSaveClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
@@ -137,6 +138,7 @@ type
 
   private
     FScriptFilename: string;
+    FScriptModified: Boolean;
     FScriptWindowProc: TWndMethod;
     FLineNumbersWindowProc: TWndMethod;
     FStopRequested: Boolean;
@@ -153,6 +155,7 @@ type
     procedure LineNumbersWindowProc(var Message: TMessage);
     procedure SyncLineNumbers;
     procedure SyncScript;
+    function SaveScript: Boolean;
     procedure EncryptClick(Sender: TObject);
     procedure CloseWindowByCaption(const WindowTitle: string);
     procedure MouseClickAt(ScreenX, ScreenY: Integer; const Button: string);
@@ -2173,6 +2176,7 @@ begin
   FScriptRunning := False;
   FRecording := False;
   FScriptFilename := '';
+  FScriptModified := False;
   GRecorderForm := Self;
   FAliases := TStringList.Create;
   FAliases.CaseSensitive := False;
@@ -2193,6 +2197,7 @@ begin
     if FileExists(FScriptFilename) then
     begin
       mmoScript.Lines.LoadFromFile(FScriptFilename);
+      FScriptModified := False;
 
       if ConsoleMode then
         btnGoClick(Self)
@@ -2458,7 +2463,7 @@ begin
       mmoScript.PlainText := True;
       mmoScript.Lines.LoadFromFile(dlg.FileName, TEncoding.UTF8);
       FScriptFilename := dlg.FileName;
-      Save1.Enabled := True;
+      FScriptModified := False;
     end;
   finally
     dlg.Free;
@@ -2470,11 +2475,33 @@ end;
 /// </summary>
 /// <param name="Sender" type="TObject">The object that triggered the event.</param>
 procedure TForm1.btnSaveClick(Sender: TObject);
+begin
+  SaveScript;
+end;
+
+procedure TForm1.New1Click(Sender: TObject);
+begin
+  if FScriptModified then
+  begin
+    if MessageBox(Handle, 'Save changes to the current script?', 'New',
+      MB_YESNO or MB_ICONQUESTION) = IDYES then
+      if not SaveScript then
+        Exit;
+  end;
+
+  FScriptFilename := '';
+  mmoScript.Clear;
+  FScriptModified := False;
+end;
+
+function TForm1.SaveScript: Boolean;
 var
   SL: TStringList;
   dlg: TSaveDialog;
+  FileName: string;
 begin
-  if FScriptFilename = '' then
+  FileName := FScriptFilename;
+  if FileName = '' then
   begin
     dlg := TSaveDialog.Create(Self);
     try
@@ -2482,8 +2509,8 @@ begin
       dlg.DefaultExt := 'script';
       dlg.Options := [ofPathMustExist, ofOverwritePrompt];
       if not dlg.Execute then
-        Exit;
-      FScriptFilename := ChangeFileExt(dlg.FileName, '.script');
+        Exit(False);
+      FileName := ChangeFileExt(dlg.FileName, '.script');
     finally
       dlg.Free;
     end;
@@ -2493,8 +2520,10 @@ begin
   SL := TStringList.Create;
   try
     SL.Text := mmoScript.Text; // plain text
-    SL.SaveToFile(FScriptFilename, TEncoding.UTF8);
-    Save1.Enabled := False;
+    SL.SaveToFile(FileName, TEncoding.UTF8);
+    FScriptFilename := FileName;
+    FScriptModified := False;
+    Result := True;
   finally
     SL.Free;
   end;
@@ -2667,7 +2696,6 @@ begin
     FillChar(GRecordedKeys, SizeOf(GRecordedKeys), 0);
     btnRecord.Caption := 'Record';
     lblStatus.Caption := 'Recording stopped';
-    Save1.Enabled := True;
     if UnhookFailed then
       raise Exception.CreateFmt(
         'Could not remove an input recording hook: %s',
@@ -2825,7 +2853,7 @@ begin
     mmoLineNumbers.Lines.Add(IntToStr(i + 1));
 
   SyncLineNumbers;
-  Save1.Enabled := True;
+  FScriptModified := True;
 
   if FRecording then
     lblStatus.Caption := 'Recording macro...'

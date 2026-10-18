@@ -274,13 +274,19 @@ object Form1: TForm1
   object MainMenu1: TMainMenu
     object File1: TMenuItem
       Caption = 'File'
+      object New1: TMenuItem
+        Caption = 'New'
+        ShortCut = 16462
+        OnClick = New1Click
+      end
       object Load1: TMenuItem
         Caption = 'Open ...'
+        ShortCut = 16463
         OnClick = btnLoadClick
       end
       object Save1: TMenuItem
         Caption = 'Save'
-        Enabled = False
+        ShortCut = 16467
         OnClick = btnSaveClick
       end
       object Quit1: TMenuItem
