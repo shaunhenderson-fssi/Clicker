@@ -243,7 +243,6 @@ object Form1: TForm1
       ScrollBars = ssBoth
       TabOrder = 0
       OnChange = mmoScriptChange
-      OnKeyPress = mmoScriptKeyPress
     end
     object mmoLineNumbers: TRichEdit
       Left = 2
@@ -262,7 +261,7 @@ object Form1: TForm1
         '1')
       ParentFont = False
       ReadOnly = True
-      ScrollBars = ssVertical
+      ScrollBars = ssNone
       TabOrder = 1
     end
   end

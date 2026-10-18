@@ -41,8 +41,8 @@
   standard Windows controls and may require adjustments for custom UI
   frameworks.
 
-  - The form handles WM_VSCROLL and WM_MOUSEWHEEL messages to keep the
-  line-number gutter aligned with the script editor.
+  - The script editor and line-number gutter synchronize their scroll
+  positions after vertical scrolling, mouse-wheel, and keyboard messages.
 
   - This unit is intended for debugging, UI inspection, and script-driven
   automation. It is not designed as a general-purpose text editor.
@@ -133,11 +133,12 @@ type
     procedure Quit1Click(Sender: TObject);
     procedure Reference1Click(Sender: TObject);
     procedure Encryption1Click(Sender: TObject);
-    procedure mmoScriptKeyPress(Sender: TObject; var Key: Char);
     procedure FormDestroy(Sender: TObject);
 
   private
     FScriptFilename: string;
+    FScriptWindowProc: TWndMethod;
+    FLineNumbersWindowProc: TWndMethod;
     FStopRequested: Boolean;
     FScriptRunning: Boolean;
     FRecording: Boolean;
@@ -148,6 +149,10 @@ type
     FLastInspectorPos: TPoint;
     FHasInspectorPos: Boolean;
 
+    procedure ScriptWindowProc(var Message: TMessage);
+    procedure LineNumbersWindowProc(var Message: TMessage);
+    procedure SyncLineNumbers;
+    procedure SyncScript;
     procedure EncryptClick(Sender: TObject);
     procedure CloseWindowByCaption(const WindowTitle: string);
     procedure MouseClickAt(ScreenX, ScreenY: Integer; const Button: string);
@@ -247,6 +252,7 @@ const
   RUNNING = '⇒';
   COMPLETED = '✓';
   ERROR = '⚠';
+  COMPLETEDALLTASKS = 'Completed all tasks';
 
   // UI Automation constants
   UIA_NamePropertyId = 30005;
@@ -2156,6 +2162,11 @@ procedure TForm1.FormCreate(Sender: TObject);
 var
   RunScriptProc: TThreadProcedure;
 begin
+  FScriptWindowProc := mmoScript.WindowProc;
+  mmoScript.WindowProc := ScriptWindowProc;
+  FLineNumbersWindowProc := mmoLineNumbers.WindowProc;
+  mmoLineNumbers.WindowProc := LineNumbersWindowProc;
+
   FInspectorOverlay := TInspectorOverlay.Create(nil);
   FHasInspectorPos := False;
   FStopRequested := False;
@@ -2209,6 +2220,8 @@ begin
   if FRecording then
     SetRecording(False);
 
+  mmoScript.WindowProc := FScriptWindowProc;
+  mmoLineNumbers.WindowProc := FLineNumbersWindowProc;
   GRecorderForm := nil;
   FInspectorOverlay.Free;
   FAliases.Free;
@@ -2811,7 +2824,7 @@ begin
   for var i := 0 to mmoScript.Lines.Count - 1 do
     mmoLineNumbers.Lines.Add(IntToStr(i + 1));
 
-  mmoLineNumbers.ScrollPosition := mmoScript.ScrollPosition;
+  SyncLineNumbers;
   Save1.Enabled := True;
 
   if FRecording then
@@ -2820,14 +2833,50 @@ begin
     lblStatus.Caption := 'Ready';
 end;
 
-/// <summary>
-/// TForm1.mmoScriptKeyPress is called when a key is pressed while the script memo has focus.
-/// </summary>
-/// <param name="Sender" type="TObject">The object that triggered the event.</param>
-/// <param name="Key" type="Char">The key that was pressed.</param>
-procedure TForm1.mmoScriptKeyPress(Sender: TObject; var Key: Char);
+procedure TForm1.ScriptWindowProc(var Message: TMessage);
 begin
-  mmoLineNumbers.ScrollPosition := mmoScript.ScrollPosition;
+  FScriptWindowProc(Message);
+
+  case Message.Msg of
+    WM_VSCROLL, WM_MOUSEWHEEL, WM_KEYDOWN, WM_CHAR:
+      SyncLineNumbers;
+  end;
+end;
+
+procedure TForm1.LineNumbersWindowProc(var Message: TMessage);
+begin
+  FLineNumbersWindowProc(Message);
+
+  case Message.Msg of
+    WM_VSCROLL, WM_MOUSEWHEEL, WM_KEYDOWN, WM_CHAR:
+      SyncScript;
+  end;
+end;
+
+procedure TForm1.SyncLineNumbers;
+var
+  ScriptLine, GutterLine: Integer;
+begin
+  ScriptLine := SendMessage(mmoScript.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+  GutterLine := SendMessage(mmoLineNumbers.Handle, EM_GETFIRSTVISIBLELINE, 0,
+    0);
+
+  if ScriptLine <> GutterLine then
+    SendMessage(mmoLineNumbers.Handle, EM_LINESCROLL, 0,
+      ScriptLine - GutterLine);
+end;
+
+procedure TForm1.SyncScript;
+var
+  ScriptLine, GutterLine: Integer;
+begin
+  ScriptLine := SendMessage(mmoScript.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
+  GutterLine := SendMessage(mmoLineNumbers.Handle, EM_GETFIRSTVISIBLELINE, 0,
+    0);
+
+  if ScriptLine <> GutterLine then
+    SendMessage(mmoScript.Handle, EM_LINESCROLL, 0,
+      GutterLine - ScriptLine);
 end;
 
 /// <summary>
@@ -2954,11 +3003,12 @@ var
   Line: string;
   parts: TArray<string>;
 begin
+  //please note ANY error is fatal
   for lineNumber := 0 to Lines.Count - 1 do
   begin
     if FStopRequested then
     begin
-      lblStatus.Caption := 'Stopped';
+      lblStatus.Caption := COMPLETEDALLTASKS;
       Exit;
     end;
 
@@ -2977,7 +3027,7 @@ begin
     Application.ProcessMessages;
     if FStopRequested then
     begin
-      lblStatus.Caption := 'Stopped';
+      lblStatus.Caption := COMPLETEDALLTASKS;
       Exit;
     end;
 
@@ -2989,7 +3039,7 @@ begin
     else
     begin
       mmoLineNumbers.Lines[lineNumber] := Format('%s %d', [ERROR, lineNumber + 1]);
-      lblStatus.Caption := 'Completed with error';
+      lblStatus.Caption := Format('Error on line %d: %s', [lineNumber + 1, Line]);
       Application.ProcessMessages;
       if ConsoleMode then
         ConsoleExitCode := 1;
@@ -3001,7 +3051,7 @@ begin
 
     if FStopRequested then
     begin
-      lblStatus.Caption := 'Stopped';
+      lblStatus.Caption := COMPLETEDALLTASKS;
       Exit;
     end;
 
@@ -3010,12 +3060,12 @@ begin
 
     if FStopRequested then
     begin
-      lblStatus.Caption := 'Stopped';
+      lblStatus.Caption := COMPLETEDALLTASKS;
       Exit;
     end;
   end;
 
-  lblStatus.Caption := 'Completed all tasks';
+  lblStatus.Caption := COMPLETEDALLTASKS;
 end;
 
 procedure TForm1.PauseForScript(Duration: Cardinal);
