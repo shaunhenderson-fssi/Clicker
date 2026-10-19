@@ -2486,8 +2486,7 @@ procedure TForm1.New1Click(Sender: TObject);
 begin
   if FScriptModified then
   begin
-    if MessageBox(Handle, 'Save changes to the current script?', 'New',
-      MB_YESNO or MB_ICONQUESTION) = IDYES then
+    if MessageBox(Handle, 'Save changes to the current script?', 'New', MB_YESNO or MB_ICONQUESTION) = IDYES then
       if not SaveScript then
         Exit;
   end;
@@ -2495,6 +2494,7 @@ begin
   FScriptFilename := '';
   mmoScript.Clear;
   FScriptModified := False;
+  Caption := 'Clicker';
 end;
 
 function TForm1.SaveScript: Boolean;
@@ -2531,6 +2531,7 @@ begin
   end;
 
   Caption := FScriptFilename + ' - Clicker';
+  lblStatus.Caption := 'Saved';
 end;
 
 /// <summary>
