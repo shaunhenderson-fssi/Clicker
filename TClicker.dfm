@@ -198,27 +198,8 @@ object Form1: TForm1
         TabOrder = 0
         OnClick = btnRecordClick
       end
-      object btnGo: TButton
-        Left = 92
-        Top = 3
-        Width = 80
-        Height = 25
-        Caption = 'Run all'
-        Font.Charset = DEFAULT_CHARSET
-        Font.Color = clWindowText
-        Font.Height = -12
-        Font.Name = 'Segoe UI'
-        Font.Style = []
-        ImageIndex = 0
-        ImageName = 'play'
-        ImageMargins.Left = 10
-        Images = ImageList1
-        ParentFont = False
-        TabOrder = 1
-        OnClick = btnGoClick
-      end
       object btnRunSelected: TButton
-        Left = 178
+        Left = 90
         Top = 3
         Width = 100
         Height = 25
@@ -234,6 +215,25 @@ object Form1: TForm1
         Images = ImageList1
         ParentFont = False
         TabOrder = 2
+        OnClick = btnGoClick
+      end
+      object btnGo: TButton
+        Left = 195
+        Top = 3
+        Width = 80
+        Height = 25
+        Caption = 'Run all'
+        Font.Charset = DEFAULT_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -12
+        Font.Name = 'Segoe UI'
+        Font.Style = []
+        ImageIndex = 0
+        ImageName = 'play'
+        ImageMargins.Left = 10
+        Images = ImageList1
+        ParentFont = False
+        TabOrder = 1
         OnClick = btnGoClick
       end
     end

@@ -155,7 +155,6 @@ type
     procedure ScriptWindowProc(var Message: TMessage);
     procedure LineNumbersWindowProc(var Message: TMessage);
     procedure SyncLineNumbers;
-    procedure SyncScript;
     function SaveScript: Boolean;
     procedure EncryptClick(Sender: TObject);
     procedure CloseWindowByCaption(const WindowTitle: string);
@@ -2444,6 +2443,8 @@ begin
     FInspectorOverlay.HideInfo;
     Caption := FScriptFilename + ' - Clicker';
   end;
+
+  mmoScript.SetFocus;
 end;
 
 /// <summary>
@@ -2851,11 +2852,19 @@ end;
 /// <param name="Sender" type="TObject">The object that triggered the event.</param>
 procedure TForm1.mmoScriptChange(Sender: TObject);
 begin
-  // sync mmoLineNumbers so that both have the same number of lines
-  mmoLineNumbers.Lines.Clear;
+  if mmoLineNumbers.Lines.Count <> mmoScript.Lines.Count then
+  begin
+    SendMessage(mmoLineNumbers.Handle, WM_SETREDRAW, 0, 0);
+    try
+      mmoLineNumbers.Lines.Clear;
 
-  for var i := 0 to mmoScript.Lines.Count - 1 do
-    mmoLineNumbers.Lines.Add(IntToStr(i + 1));
+      for var i := 0 to mmoScript.Lines.Count - 1 do
+        mmoLineNumbers.Lines.Add(IntToStr(i + 1));
+    finally
+      SendMessage(mmoLineNumbers.Handle, WM_SETREDRAW, 1, 0);
+      mmoLineNumbers.Invalidate;
+    end;
+  end;
 
   SyncLineNumbers;
   FScriptModified := True;
@@ -2882,7 +2891,7 @@ begin
 
   case Message.Msg of
     WM_VSCROLL, WM_MOUSEWHEEL, WM_KEYDOWN, WM_CHAR:
-      SyncScript;
+      SyncLineNumbers;
   end;
 end;
 
@@ -2891,25 +2900,10 @@ var
   ScriptLine, GutterLine: Integer;
 begin
   ScriptLine := SendMessage(mmoScript.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
-  GutterLine := SendMessage(mmoLineNumbers.Handle, EM_GETFIRSTVISIBLELINE, 0,
-    0);
+  GutterLine := SendMessage(mmoLineNumbers.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
 
   if ScriptLine <> GutterLine then
-    SendMessage(mmoLineNumbers.Handle, EM_LINESCROLL, 0,
-      ScriptLine - GutterLine);
-end;
-
-procedure TForm1.SyncScript;
-var
-  ScriptLine, GutterLine: Integer;
-begin
-  ScriptLine := SendMessage(mmoScript.Handle, EM_GETFIRSTVISIBLELINE, 0, 0);
-  GutterLine := SendMessage(mmoLineNumbers.Handle, EM_GETFIRSTVISIBLELINE, 0,
-    0);
-
-  if ScriptLine <> GutterLine then
-    SendMessage(mmoScript.Handle, EM_LINESCROLL, 0,
-      GutterLine - ScriptLine);
+    SendMessage(mmoLineNumbers.Handle, EM_LINESCROLL, 0, ScriptLine - GutterLine);
 end;
 
 /// <summary>
