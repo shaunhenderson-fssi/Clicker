@@ -36,6 +36,8 @@ It can perform the following tasks:
 - Sleep <milliseconds>
 - Alias <name> <value>
 - If <"Button"|"Edit"> <WindowName> <name|id|hwnd> "Expected text"
+- Assert <Button|Edit|Memo> <name|id|hwnd> "Expected text"
+- Assert <Button|Edit|Memo> <WindowName> <name|id|hwnd> "Expected text"
 - Close <windowName>
 - Stop (halts the current script immediately and skips remaining commands)
 - Assert Color <x> <y> <#RRGGBB|colorName>
@@ -48,6 +50,21 @@ or `Assert Color 321 222 red`. The custom named color `clYellowPNS` is also
 available and is equivalent to `#FED803` (RGB 254,216,3). A color mismatch
 stops the script with an error. It samples up to 10 times at 100 ms intervals
 and passes when at least 8 samples match the expected color.
+
+`Assert Memo` checks the full text in a memo control, treating line breaks as
+spaces. For example, a memo containing three lines can be checked with:
+
+```text
+Assert Memo ID:1449582 "Barcode check digit is invalid Barcode 9412345678901 Please try again"
+```
+
+Memo IDs are searched under the configured window first, then across other
+top-level windows (useful for popup dialogs). If more than one memo has that
+ID, target it by HWND instead:
+
+```text
+Assert Memo HWND:001616E6 "Expected text"
+```
 
 In the program, use Help > Reference to get a list of commands and an explanation of usage
 

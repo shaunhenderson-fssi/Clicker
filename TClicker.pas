@@ -212,6 +212,16 @@ type
     Found: HWND;
   end;
 
+  PFindByIdAndClassCtx = ^TFindByIdAndClassCtx;
+
+  TFindByIdAndClassCtx = record
+    TargetId: Integer;
+    Classes: PPointer;
+    ClassCount: Integer;
+    Found: HWND;
+    Count: Integer;
+  end;
+
   TModifiers = set of (mdCtrl, mdAlt, mdShift, mdWin);
 
   TFindCaptionCtx = record
@@ -271,7 +281,8 @@ const
   IID_IUIAutomationInvokePattern: TGUID = '{FB377FBE-8EA6-46D5-9C73-6499642D3059}';
 
   // Treat these as "edit-like" window classes
-  EDIT_CLASS_NAMES: array [0 .. 4] of PChar = ('Edit', 'TEdit', 'TAKPEdit', 'TAKPScanEdit', 'TRichEdit');
+  EDIT_CLASS_NAMES: array [0 .. 6] of PChar = ('Edit', 'TEdit', 'TAKPEdit', 'TAKPScanEdit', 'TRichEdit', 'TMemo', 'TCustomMemo');
+  MEMO_CLASS_NAMES: array [0 .. 1] of PChar = ('TMemo', 'TCustomMemo');
 
   // Treat these as "button-like" classes (plus we also match by caption text)
   BUTTON_CLASS_NAMES: array [0 .. 4] of PChar = ('Button', 'TButton', 'TAKPButton', 'TFSTouchButton', 'TSpeedButton');
@@ -1436,6 +1447,68 @@ begin
 end;
 
 /// <summary>
+/// Finds memo controls with the specified ID under a window or anywhere on the desktop.
+/// </summary>
+function FindMemoById(Parent: HWND; ID: Integer; out MatchCount: Integer): HWND;
+var
+  Ctx: TFindByIdAndClassCtx;
+
+  function EnumFindMemoByIdProc(h: HWND; lParam: LPARAM): BOOL; stdcall;
+  type
+    TPointerArray = array[0..MaxInt div SizeOf(Pointer) - 1] of Pointer;
+    PPointerArray = ^TPointerArray;
+  var
+    LocalCtx: PFindByIdAndClassCtx;
+    ClassNames: PPointerArray;
+    ClassBuffer: array[0..255] of Char;
+    ClassIndex: Integer;
+    ClassMatches: Boolean;
+  begin
+    LocalCtx := PFindByIdAndClassCtx(lParam);
+    if GetWindowLong(h, GWL_ID) = LocalCtx^.TargetId then
+    begin
+      ClassMatches := False;
+      ClassNames := PPointerArray(LocalCtx^.Classes);
+      if GetClassName(h, ClassBuffer, Length(ClassBuffer)) > 0 then
+        for ClassIndex := 0 to LocalCtx^.ClassCount - 1 do
+          if SameText(ClassBuffer, PChar(ClassNames^[ClassIndex])) then
+          begin
+            ClassMatches := True;
+            Break;
+          end;
+
+      if ClassMatches then
+      begin
+        Inc(LocalCtx^.Count);
+        LocalCtx^.Found := h;
+      end;
+    end;
+    Result := True;
+  end;
+
+  function EnumTopWindowProc(h: HWND; lParam: LPARAM): BOOL; stdcall;
+  begin
+    EnumChildWindows(h, @EnumFindMemoByIdProc, lParam);
+    Result := True;
+  end;
+
+begin
+  Ctx.TargetId := ID;
+  Ctx.Classes := @MEMO_CLASS_NAMES[0];
+  Ctx.ClassCount := Length(MEMO_CLASS_NAMES);
+  Ctx.Found := 0;
+  Ctx.Count := 0;
+
+  if Parent <> 0 then
+    EnumChildWindows(Parent, @EnumFindMemoByIdProc, LPARAM(@Ctx))
+  else
+    EnumWindows(@EnumTopWindowProc, LPARAM(@Ctx));
+
+  MatchCount := Ctx.Count;
+  Result := Ctx.Found;
+end;
+
+/// <summary>
 /// Tries to parse a string token representing a window handle (HWND) in various formats, such as "HWND:001A1CE4", "001A1CE4", "0x001A1CE4", or "$001A1CE4".
 /// It validates the format and checks if the resulting handle corresponds to an existing window.
 /// </summary>
@@ -1817,7 +1890,7 @@ function DescribeWindow(h: HWND): string;
   end;
 
 var
-  cls, txt: array [0 .. 255] of Char;
+  cls: array [0 .. 255] of Char;
   sTxt, parentTxt: string;
   ID: LongInt;
   R: TRect;
@@ -1833,8 +1906,7 @@ begin
   GetClassName(h, cls, Length(cls));
   ID := GetWindowLong(h, GWL_ID);
 
-  GetWindowText(h, txt, Length(txt));
-  sTxt := txt;
+  sTxt := GetControlWindowText(h);
 
   if sTxt = '' then
     sTxt := GetCaptionAtPoint(pt);
@@ -1863,7 +1935,7 @@ end;
 function DescribeAtPoint(const PtScreen: TPoint): string;
 var
   h: HWND;
-  cls, txt: array [0 .. 255] of Char;
+  cls: array [0 .. 255] of Char;
   ID: LongInt;
   R: TRect;
 begin
@@ -1872,13 +1944,13 @@ begin
     Exit(Format('No window at (%d,%d)', [PtScreen.X, PtScreen.Y]));
 
   GetClassName(h, cls, Length(cls));
-  GetWindowText(h, txt, Length(txt));
+  var WindowText := GetControlWindowText(h);
   GetWindowRect(h, R);
   ID := GetWindowLong(h, GWL_ID);
 
   Result := Format(
     'ID=%d Text="%s" HWND=%p Pos=%s Class=%s',
-    [ID, txt, Pointer(h), RectToStr(R), cls]);
+    [ID, WindowText, Pointer(h), RectToStr(R), cls]);
 end;
 
 { ---- Misc helpers ---- }
@@ -2336,7 +2408,7 @@ var
   /// <returns>The description of the window.</returns>
   function DescribeWindowDetails(h: HWND; const Pt: TPoint): TStringList;
   var
-    ClassNameBuffer, TextBuffer: array [0 .. 255] of Char;
+    ClassNameBuffer: array [0 .. 255] of Char;
     CaptionText, ParentText: string;
     ParentH: HWND;
     R: TRect;
@@ -2351,8 +2423,7 @@ var
     end;
 
     GetClassName(h, ClassNameBuffer, Length(ClassNameBuffer));
-    GetWindowText(h, TextBuffer, Length(TextBuffer));
-    CaptionText := TextBuffer;
+    CaptionText := GetControlWindowText(h);
 
     if CaptionText = '' then
       CaptionText := GetCaptionAtPoint(Pt);
@@ -2419,7 +2490,7 @@ begin
   S := DescribeWindow(h);
 
   // Show live info
-  Caption := S + ' - Clicker';
+  //Caption := S + ' - Clicker';
   if GetWindowRect(h, R) = False then
     R := Rect(0, 0, 0, 0);
 
@@ -2441,7 +2512,7 @@ begin
   if not chkHoverText.Checked then
   begin
     FInspectorOverlay.HideInfo;
-    Caption := FScriptFilename + ' - Clicker';
+    //Caption := FScriptFilename + ' - Clicker';
   end;
 
   mmoScript.SetFocus;
@@ -2961,9 +3032,12 @@ begin
     SL.Add('    Pauses execution for the specified time (default is 1 second). The default pause time is not added after Sleep.');
     SL.Add('  Alias <name> <value> or Alias <name> <x> <y>');
     SL.Add('    Defines a reusable value or screen-coordinate alias, e.g. `Alias zero 839 636` then `MouseClick zero`');
-    SL.Add('  Assert <"Button"|"Edit"> <WindowName> <name|id|hwnd> "Expected text"');
+    SL.Add('  Assert <Button|Edit|Memo> <name|id|hwnd> "Expected text"');
+    SL.Add('  Assert <Button|Edit|Memo> <WindowName> <name|id|hwnd> "Expected text"');
     SL.Add('    The script will continue only when the expected text is found');
     SL.Add('    If WindowName is omitted, it will default to what is in the default window box');
+    SL.Add('    Memo IDs are also searched across top-level windows; use HWND:<hex> to target a memo directly');
+    SL.Add('    Memo assertions treat line breaks as spaces');
     SL.Add('  Assert Color <x> <y> <#RRGGBB|colorName>');
     SL.Add('    Checks the pixel color at the specified screen coordinates, e.g. Assert Color 121 254 #1a2b3c or Assert Color 321 222 red');
     SL.Add('    Samples up to 10 times, 100 ms apart; the expected color must match at least 8 samples.');
@@ -3649,22 +3723,105 @@ var
   end;
 
   /// <summary>
-  /// Gets the text of an edit control.
+  /// Gets the text of an edit or memo control.
   /// </summary>
   /// <param name="h" type="HWND">The handle of the edit control.</param>
   /// <returns>The text of the edit control, or an empty string if not found.</returns>
-  function GetEditText(h: HWND): string;
+  function GetControlText(h: HWND): string;
   var
-    Len: Integer;
+    MessageResult: DWORD_PTR;
+    TextLength: Integer;
   begin
     Result := '';
     if h = 0 then Exit;
 
-    Len := GetWindowTextLength(h);
-    if Len <= 0 then Exit;
+    MessageResult := 0;
+    if SendMessageTimeout(h, WM_GETTEXTLENGTH, 0, 0, SMTO_ABORTIFHUNG, 200,
+      @MessageResult) = 0 then
+      raise Exception.Create('Unable to read control text');
 
-    SetLength(Result, Len);
-    GetWindowText(h, PChar(Result), Len + 1);
+    if MessageResult > High(Integer) - 1 then
+      raise Exception.Create('Control text is too long to read');
+
+    TextLength := Integer(MessageResult);
+    if TextLength = 0 then Exit;
+
+    SetLength(Result, TextLength);
+    MessageResult := 0;
+    if SendMessageTimeout(h, WM_GETTEXT, TextLength + 1, LPARAM(PChar(Result)),
+      SMTO_ABORTIFHUNG, 200, @MessageResult) = 0 then
+      raise Exception.Create('Unable to read control text');
+
+    if MessageResult < DWORD_PTR(TextLength) then
+      SetLength(Result, Integer(MessageResult));
+  end;
+
+  function DecodeMemoExpectedText(const Value: string): string;
+  var
+    i: Integer;
+  begin
+    Result := '';
+    i := 1;
+    while i <= Length(Value) do
+    begin
+      if (Value[i] = '\') and (i < Length(Value)) then
+      begin
+        case Value[i + 1] of
+          '\':
+            begin
+              Result := Result + '\';
+              Inc(i, 2);
+            end;
+          'r':
+            begin
+              Result := Result + #13;
+              Inc(i, 2);
+            end;
+          'n':
+            begin
+              Result := Result + #10;
+              Inc(i, 2);
+            end;
+        else
+          Result := Result + Value[i];
+          Inc(i);
+        end;
+      end
+      else
+      begin
+        Result := Result + Value[i];
+        Inc(i);
+      end;
+    end;
+  end;
+
+  function NormalizeMemoText(const Value: string): string;
+  var
+    i: Integer;
+    AddSpace: Boolean;
+  begin
+    Result := '';
+    AddSpace := False;
+    i := 1;
+    while i <= Length(Value) do
+    begin
+      if CharInSet(Value[i], [#13, #10]) then
+      begin
+        AddSpace := Result <> '';
+        if (Value[i] = #13) and (i < Length(Value)) and (Value[i + 1] = #10) then
+          Inc(i, 2)
+        else
+          Inc(i);
+      end
+      else
+      begin
+        if AddSpace and (Result[Length(Result)] <> ' ') then
+          Result := Result + ' ';
+        AddSpace := False;
+        Result := Result + Value[i];
+        Inc(i);
+      end;
+    end;
   end;
 
 begin
@@ -4054,8 +4211,10 @@ begin
       // Usage:
       // Assert Button <token> "expected"
       // Assert Edit   <token> "expected"
+      // Assert Memo   <token> "expected"
       // Assert Button "Window Name" <token> "expected"
       // Assert Edit   "Window Name" <token> "expected"
+      // Assert Memo   "Window Name" <token> "expected"
       // Assert Color X Y "named color"
       // Assert Color X Y "#HEX_CODE"
 
@@ -4162,8 +4321,8 @@ begin
       else
         raise Exception.CreateFmt(
           '%s:%d Assert usage:' + CRLF +
-          '  Assert <Button|Edit> <token> "expected"' + CRLF +
-          '  Assert <Button|Edit> "Window Name" <token> "expected"' + CRLF +
+          '  Assert <Button|Edit|Memo> <token> "expected"' + CRLF +
+          '  Assert <Button|Edit|Memo> "Window Name" <token> "expected"' + CRLF +
           '  Assert Color <x> <y> <#RRGGBB|colorName>',
           [SourceName, lineNumber + 1]);
 
@@ -4187,25 +4346,70 @@ begin
 
           bOK := True;
         end
-        else if SameText(Kind, 'Edit') then
+        else if SameText(Kind, 'Memo') then
         begin
-          var Edit := ResolveControl(W, Token, EDIT_CLASS_NAMES);
-          if Edit = 0 then
-            raise Exception.CreateFmt(
-              '%s:%d Edit "%s" not found in window "%s"',
-              [SourceName, lineNumber + 1, Token, WindowName]);
+          var Control: HWND := 0;
+          var MemoId, MatchCount: Integer;
 
-          var Actual := GetEditText(Edit);
+          if TryParseHWNDToken(Token, Control) then
+          begin
+            if not IsClassIn(Control, MEMO_CLASS_NAMES) then
+              raise Exception.CreateFmt(
+                '%s:%d HWND "%s" is not a memo control',
+                [SourceName, lineNumber + 1, Token]);
+          end
+          else if TryParseControlIdToken(Token, MemoId) then
+          begin
+            Control := FindMemoById(W, MemoId, MatchCount);
+            if MatchCount = 0 then
+              Control := FindMemoById(0, MemoId, MatchCount);
+
+            if MatchCount > 1 then
+              raise Exception.CreateFmt(
+                '%s:%d Memo ID %d is ambiguous (%d matching controls). Use an HWND token.',
+                [SourceName, lineNumber + 1, MemoId, MatchCount]);
+            if Control = 0 then
+              raise Exception.CreateFmt(
+                '%s:%d Memo ID %d not found under "%s" or any top-level window',
+                [SourceName, lineNumber + 1, MemoId, WindowName]);
+          end
+          else
+          begin
+            Control := ResolveControl(W, Token, EDIT_CLASS_NAMES);
+            if not IsClassIn(Control, MEMO_CLASS_NAMES) then
+              raise Exception.CreateFmt(
+                '%s:%d Control "%s" is not a memo control',
+                [SourceName, lineNumber + 1, Token]);
+          end;
+
+          Expected := NormalizeMemoText(DecodeMemoExpectedText(Expected));
+          var Actual := NormalizeMemoText(GetControlText(Control));
           if not SameText(Actual, Expected) then
             raise Exception.CreateFmt(
-              '%s:%d Edit "%s" text mismatch. Expected "%s", got "%s"',
+              '%s:%d Memo "%s" text mismatch. Expected "%s", got "%s"',
               [SourceName, lineNumber + 1, Token, Expected, Actual]);
+
+          bOK := True;
+        end
+        else if SameText(Kind, 'Edit') then
+        begin
+          var Control := ResolveControl(W, Token, EDIT_CLASS_NAMES);
+          if Control = 0 then
+            raise Exception.CreateFmt(
+              '%s:%d %s "%s" not found in window "%s"',
+              [SourceName, lineNumber + 1, Kind, Token, WindowName]);
+
+          var Actual := GetControlText(Control);
+          if not SameText(Actual, Expected) then
+            raise Exception.CreateFmt(
+              '%s:%d %s "%s" text mismatch. Expected "%s", got "%s"',
+              [SourceName, lineNumber + 1, Kind, Token, Expected, Actual]);
 
           bOK := True;
         end
         else
           raise Exception.CreateFmt(
-            '%s:%d Unknown Assert target "%s". Use "Button" or "Edit"',
+            '%s:%d Unknown Assert target "%s". Use "Button", "Edit", or "Memo"',
             [SourceName, lineNumber + 1, Kind]);
       end;
     end;
