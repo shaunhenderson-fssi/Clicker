@@ -38,6 +38,7 @@ It can perform the following tasks:
 - If <"Button"|"Edit"> <WindowName> <name|id|hwnd> "Expected text"
 - Assert <Button|Edit|Memo> <name|id|hwnd> "Expected text"
 - Assert <Button|Edit|Memo> <WindowName> <name|id|hwnd> "Expected text"
+- Assert Memo <screenX> <screenY> "Expected text"
 - Close <windowName>
 - Stop (halts the current script immediately and skips remaining commands)
 - Assert Color <x> <y> <#RRGGBB|colorName>
@@ -65,6 +66,16 @@ ID, target it by HWND instead:
 ```text
 Assert Memo HWND:001616E6 "Expected text"
 ```
+
+To avoid changing IDs and HWNDs, use screen coordinates inside the memo. The
+coordinates are relative to the desktop, like `MouseClick`:
+
+```text
+Assert Memo 506 366 "Product not found"
+```
+
+The control under those coordinates (including a memo nested under another
+child control) is checked.
 
 In the program, use Help > Reference to get a list of commands and an explanation of usage
 

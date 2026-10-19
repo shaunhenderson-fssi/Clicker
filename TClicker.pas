@@ -1768,6 +1768,13 @@ begin
   end;
 end;
 
+function FindMemoAtPoint(const PtScreen: TPoint): HWND;
+begin
+  Result := DeepChildWindowFromPoint(PtScreen);
+  while (Result <> 0) and not IsClassIn(Result, MEMO_CLASS_NAMES) do
+    Result := GetParent(Result);
+end;
+
 /// <summary>
 /// Gets the text of a window in a safe manner, using the GetControlWindowText function to handle potential issues with certain window types.
 /// </summary>
@@ -3034,6 +3041,8 @@ begin
     SL.Add('    Defines a reusable value or screen-coordinate alias, e.g. `Alias zero 839 636` then `MouseClick zero`');
     SL.Add('  Assert <Button|Edit|Memo> <name|id|hwnd> "Expected text"');
     SL.Add('  Assert <Button|Edit|Memo> <WindowName> <name|id|hwnd> "Expected text"');
+    SL.Add('  Assert Memo <screenX> <screenY> "Expected text"');
+    SL.Add('    Finds the memo under the given screen coordinates; line breaks are treated as spaces');
     SL.Add('    The script will continue only when the expected text is found');
     SL.Add('    If WindowName is omitted, it will default to what is in the default window box');
     SL.Add('    Memo IDs are also searched across top-level windows; use HWND:<hex> to target a memo directly');
@@ -4215,10 +4224,13 @@ begin
       // Assert Button "Window Name" <token> "expected"
       // Assert Edit   "Window Name" <token> "expected"
       // Assert Memo   "Window Name" <token> "expected"
+      // Assert Memo   <x> <y> "expected"
       // Assert Color X Y "named color"
       // Assert Color X Y "#HEX_CODE"
 
       var Kind, WindowName, Token, Expected: string;
+      var MemoAtPoint: Boolean := False;
+      var ScreenX, ScreenY: Integer;
 
       if (Length(parts) = 5) and SameText(parts[1], 'Color') then
       begin
@@ -4228,7 +4240,6 @@ begin
         const sleepTimeBetweenSamples = 100; //ms 10 * 100 = 1000 (1 second) total
 
         Kind := parts[1];
-        var ScreenX, ScreenY: Integer;
         if not TryStrToInt(parts[2], ScreenX) or not TryStrToInt(parts[3], ScreenY) then
           raise Exception.CreateFmt(
             '%s:%d Assert Color coordinates must be integers',
@@ -4302,6 +4313,15 @@ begin
 
         bOK := True;
       end
+      else if (Length(parts) = 5) and SameText(parts[1], 'Memo') and
+        TryStrToInt(parts[2], ScreenX) and TryStrToInt(parts[3], ScreenY) then
+      begin
+        Kind := parts[1];
+        WindowName := defaultWindowName.Text;
+        Token := Format('%d,%d', [ScreenX, ScreenY]);
+        Expected := parts[4];
+        MemoAtPoint := True;
+      end
       else if (Length(parts) = 4) and not SameText(parts[1], 'Color') then
       begin
         // Assert Button <token> "expected"
@@ -4323,12 +4343,15 @@ begin
           '%s:%d Assert usage:' + CRLF +
           '  Assert <Button|Edit|Memo> <token> "expected"' + CRLF +
           '  Assert <Button|Edit|Memo> "Window Name" <token> "expected"' + CRLF +
+          '  Assert Memo <screenX> <screenY> "expected"' + CRLF +
           '  Assert Color <x> <y> <#RRGGBB|colorName>',
           [SourceName, lineNumber + 1]);
 
       if not SameText(Kind, 'Color') then
       begin
-        var W := RequireDialogFlexible(WindowName);
+        var W: HWND := 0;
+        if not MemoAtPoint then
+          W := RequireDialogFlexible(WindowName);
 
         if SameText(Kind, 'Button') then
         begin
@@ -4350,8 +4373,19 @@ begin
         begin
           var Control: HWND := 0;
           var MemoId, MatchCount: Integer;
+          var MemoPoint: TPoint;
 
-          if TryParseHWNDToken(Token, Control) then
+          if MemoAtPoint then
+          begin
+            MemoPoint.X := ScreenX;
+            MemoPoint.Y := ScreenY;
+            Control := FindMemoAtPoint(MemoPoint);
+            if Control = 0 then
+              raise Exception.CreateFmt(
+                '%s:%d No memo control found at screen coordinates (%d, %d)',
+                [SourceName, lineNumber + 1, ScreenX, ScreenY]);
+          end
+          else if TryParseHWNDToken(Token, Control) then
           begin
             if not IsClassIn(Control, MEMO_CLASS_NAMES) then
               raise Exception.CreateFmt(
