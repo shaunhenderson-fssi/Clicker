@@ -97,6 +97,7 @@ type
 
   TForm1 = class(TForm)
     btnGo: TButton;
+    btnRunSelected: TButton;
     btnRecord: TButton;
     defaultWindowName: TEdit;
     lblDefaultWindowName: TLabel;
@@ -167,7 +168,8 @@ type
     procedure RecordMouseClick(ScreenX, ScreenY: Integer; const Button: string);
     function SetEditText(Edit: HWND; const Value: string): Boolean;
     procedure RunScriptFile(FileName: string);
-    procedure RunScriptLines(Lines: TStrings; const SourceName: string);
+    procedure RunScriptLines(Lines: TStrings; const SourceName: string;
+      LineOffset: Integer = 0);
     procedure PauseForScript(Duration: Cardinal);
     procedure ClickElementInternal(const WindowName: string; var Token: string);
     function ExecuteCommand(const parts: TArray<string>; lineNumber: Integer; const SourceName: string): Boolean;
@@ -2418,7 +2420,7 @@ begin
   S := DescribeWindow(h);
 
   // Show live info
-  Caption := 'Clicker - ' + S;
+  Caption := S + ' - Clicker';
   if GetWindowRect(h, R) = False then
     R := Rect(0, 0, 0, 0);
 
@@ -2440,7 +2442,7 @@ begin
   if not chkHoverText.Checked then
   begin
     FInspectorOverlay.HideInfo;
-    //Caption := 'Clicker';
+    Caption := FScriptFilename + ' - Clicker';
   end;
 end;
 
@@ -2464,6 +2466,7 @@ begin
       mmoScript.Lines.LoadFromFile(dlg.FileName, TEncoding.UTF8);
       FScriptFilename := dlg.FileName;
       FScriptModified := False;
+      Caption := FScriptFilename + ' - Clicker';
     end;
   finally
     dlg.Free;
@@ -2516,7 +2519,6 @@ begin
     end;
   end;
 
-  // mmoScript.Lines.SaveToFile(FScriptFilename); //this saves as rich (formatted) text
   SL := TStringList.Create;
   try
     SL.Text := mmoScript.Text; // plain text
@@ -2527,6 +2529,8 @@ begin
   finally
     SL.Free;
   end;
+
+  Caption := FScriptFilename + ' - Clicker';
 end;
 
 /// <summary>
@@ -3025,15 +3029,19 @@ end;
 /// </summary>
 /// <param name="Lines" type="TStrings">The list of script lines to execute.</param>
 /// <param name="SourceName" type="string">The name of the source containing the script lines.</param>
-procedure TForm1.RunScriptLines(Lines: TStrings; const SourceName: string);
+procedure TForm1.RunScriptLines(Lines: TStrings; const SourceName: string;
+  LineOffset: Integer);
 var
   lineNumber: Integer;
+  sourceLineNumber: Integer;
   Line: string;
   parts: TArray<string>;
 begin
   //please note ANY error is fatal
   for lineNumber := 0 to Lines.Count - 1 do
   begin
+    sourceLineNumber := lineNumber + LineOffset;
+
     if FStopRequested then
     begin
       lblStatus.Caption := COMPLETEDALLTASKS;
@@ -3050,7 +3058,7 @@ begin
 
     lblStatus.Caption := Format(
       'Running %s:%d → %s',
-      [SourceName, lineNumber + 1, Line]);
+      [SourceName, sourceLineNumber + 1, Line]);
 
     Application.ProcessMessages;
     if FStopRequested then
@@ -3060,20 +3068,32 @@ begin
     end;
 
     // ---- COMMAND DISPATCH ----
-    mmoLineNumbers.Lines[lineNumber] := Format('%s %d', [RUNNING, lineNumber + 1]);
+    if (sourceLineNumber >= 0) and (sourceLineNumber < mmoLineNumbers.Lines.Count) then
+      mmoLineNumbers.Lines[sourceLineNumber] := Format('%s %d', [RUNNING, sourceLineNumber + 1]);
 
-    if ExecuteCommand(parts, lineNumber, SourceName) then
-      mmoLineNumbers.Lines[lineNumber] := Format('%s %d', [COMPLETED, lineNumber + 1])
+    if ExecuteCommand(parts, sourceLineNumber, SourceName) then
+    begin
+      if (sourceLineNumber >= 0) and (sourceLineNumber < mmoLineNumbers.Lines.Count) then
+        mmoLineNumbers.Lines[sourceLineNumber] := Format('%s %d', [COMPLETED, sourceLineNumber + 1]);
+    end
     else
     begin
-      mmoLineNumbers.Lines[lineNumber] := Format('%s %d', [ERROR, lineNumber + 1]);
-      lblStatus.Caption := Format('Error on line %d: %s', [lineNumber + 1, Line]);
+      if (sourceLineNumber >= 0) and (sourceLineNumber < mmoLineNumbers.Lines.Count) then
+        mmoLineNumbers.Lines[sourceLineNumber] := Format('%s %d', [ERROR, sourceLineNumber + 1]);
+
+      lblStatus.Caption := Format(
+        'Error on line %d: %s',
+        [sourceLineNumber + 1, Line]);
+
       Application.ProcessMessages;
+
       if ConsoleMode then
         ConsoleExitCode := 1;
+
       ShowTextDialog('Error', Format(
         'Error on line %d. Command in %s failed.' + CRLF + '%s',
-        [lineNumber, SourceName, Line]));
+        [sourceLineNumber + 1, SourceName, Line]));
+
       Exit;
     end;
 
@@ -4274,11 +4294,43 @@ end;
 procedure TForm1.btnGoClick(Sender: TObject);
 var
   Script: TStringList;
+  SelectionStart, SelectionLength: Integer;
+  FirstLine, LastLine, LineIndex: Integer;
+  LineOffset: Integer;
 begin
   if FScriptRunning then
   begin
     FStopRequested := True;
     Exit;
+  end;
+
+  LineOffset := 0;
+  FirstLine := 0;
+  LastLine := -1;
+  if Sender = btnRunSelected then
+  begin
+    SelectionStart := mmoScript.SelStart;
+    SelectionLength := mmoScript.SelLength;
+    if SelectionLength = 0 then
+    begin
+      lblStatus.Caption := 'Select one or more script lines to run.';
+      Exit;
+    end;
+
+    FirstLine := SendMessage(mmoScript.Handle, EM_LINEFROMCHAR,
+      SelectionStart, 0);
+    LastLine := SendMessage(mmoScript.Handle, EM_LINEFROMCHAR,
+      SelectionStart + SelectionLength - 1, 0);
+    if FirstLine < 0 then
+      FirstLine := 0;
+    if LastLine >= mmoScript.Lines.Count then
+      LastLine := mmoScript.Lines.Count - 1;
+    if FirstLine > LastLine then
+    begin
+      lblStatus.Caption := 'Select one or more script lines to run.';
+      Exit;
+    end;
+    LineOffset := FirstLine;
   end;
 
   FScriptRunning := True;
@@ -4289,20 +4341,27 @@ begin
   Script := TStringList.Create;
   try
     try
-      Script.Text := mmoScript.Text;
+      if Sender = btnRunSelected then
+      begin
+        for LineIndex := FirstLine to LastLine do
+          Script.Add(mmoScript.Lines[LineIndex]);
+      end
+      else
+      begin
+        Script.Text := mmoScript.Text;
 
-      // Expand all Load commands first
-      ExpandLoadCommands(Script, FScriptFilename);
+        // Expand all Load commands first
+        ExpandLoadCommands(Script, FScriptFilename);
 
-      // Optional: reflect expansion back into editor
-      mmoScript.Text := Script.Text;
+        // Optional: reflect expansion back into editor
+        mmoScript.Text := Script.Text;
+      end;
 
-      // Now execute
-      RunScriptLines(Script, 'MainScript');
+      RunScriptLines(Script, 'MainScript', LineOffset);
     finally
       Script.Free;
       FScriptRunning := False;
-      btnGo.Caption := 'Run';
+      btnGo.Caption := 'Run all';
       btnGo.ImageIndex := 0;
       btnGo.Enabled := True;
     end;

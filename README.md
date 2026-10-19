@@ -9,6 +9,7 @@ It has the following features:
 - Can toggle the live hover text inspector on or off
 - Can automatically run a script via command line arguments
 - Can run scripts in console mode and print script output to standard output
+- Can run the selected script lines from the editor
 - Comments
 
 Run a script without opening the editor:
@@ -58,4 +59,5 @@ start comments.
 
 Use the Record button to start capturing input and Stop to finish. The recorded
 commands appear in the script editor; use File > Save to save them as a `.script`
-file.
+file. Select one or more lines in the editor and click **Run selected** to
+execute only those lines.

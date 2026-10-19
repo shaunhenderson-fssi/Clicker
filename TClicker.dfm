@@ -181,7 +181,7 @@ object Form1: TForm1
     object GroupBox2: TGroupBox
       Left = 590
       Top = 17
-      Width = 174
+      Width = 280
       Height = 30
       Align = alRight
       TabOrder = 1
@@ -201,9 +201,9 @@ object Form1: TForm1
       object btnGo: TButton
         Left = 92
         Top = 3
-        Width = 75
+        Width = 80
         Height = 25
-        Caption = 'Run'
+        Caption = 'Run all'
         Font.Charset = DEFAULT_CHARSET
         Font.Color = clWindowText
         Font.Height = -12
@@ -215,6 +215,25 @@ object Form1: TForm1
         Images = ImageList1
         ParentFont = False
         TabOrder = 1
+        OnClick = btnGoClick
+      end
+      object btnRunSelected: TButton
+        Left = 178
+        Top = 3
+        Width = 100
+        Height = 25
+        Caption = 'Run selected'
+        Font.Charset = DEFAULT_CHARSET
+        Font.Color = clWindowText
+        Font.Height = -12
+        Font.Name = 'Segoe UI'
+        Font.Style = []
+        ImageIndex = 0
+        ImageName = 'play'
+        ImageMargins.Left = 8
+        Images = ImageList1
+        ParentFont = False
+        TabOrder = 2
         OnClick = btnGoClick
       end
     end
