@@ -98,6 +98,7 @@ type
   TForm1 = class(TForm)
     btnGo: TButton;
     btnRunSelected: TButton;
+    btnStep: TButton;
     btnRecord: TButton;
     defaultWindowName: TEdit;
     lblDefaultWindowName: TLabel;
@@ -124,6 +125,7 @@ type
     ImageList1: TImageList;
 
     procedure btnGoClick(Sender: TObject);
+    procedure btnStepClick(Sender: TObject);
     procedure btnRecordClick(Sender: TObject);
     procedure chkHoverTextClick(Sender: TObject);
     procedure tmrInspectorTimer(Sender: TObject);
@@ -144,6 +146,7 @@ type
     FLineNumbersWindowProc: TWndMethod;
     FStopRequested: Boolean;
     FScriptRunning: Boolean;
+    FStepLine: Integer;
     FRecording: Boolean;
     FRecordedText: string;
     FEncryptInput: TEdit;
@@ -1237,6 +1240,34 @@ begin
   SendInput(1, @Inp, SizeOf(Inp));
 end;
 
+procedure SendMouseClick(DownFlag, UpFlag: DWORD);
+var
+  Inputs: array[0..1] of TInput;
+  ReleaseInput: TInput;
+  Sent: UINT;
+begin
+  ZeroMemory(@Inputs, SizeOf(Inputs));
+  Inputs[0].Itype := INPUT_MOUSE;
+  Inputs[0].mi.dwFlags := DownFlag;
+  Inputs[1].Itype := INPUT_MOUSE;
+  Inputs[1].mi.dwFlags := UpFlag;
+
+  Sent := SendInput(Length(Inputs), @Inputs[0], SizeOf(TInput));
+  if Sent <> UINT(Length(Inputs)) then
+  begin
+    ZeroMemory(@ReleaseInput, SizeOf(ReleaseInput));
+    ReleaseInput.Itype := INPUT_MOUSE;
+    ReleaseInput.mi.dwFlags := UpFlag;
+    if SendInput(1, @ReleaseInput, SizeOf(ReleaseInput)) <> 1 then
+      raise Exception.CreateFmt(
+        'Mouse click input was only partially sent (%d of %d events), and the button release could not be sent.',
+        [Sent, Length(Inputs)]);
+    raise Exception.CreateFmt(
+      'Mouse click input was only partially sent (%d of %d events).',
+      [Sent, Length(Inputs)]);
+  end;
+end;
+
 /// <summary>
 /// Determines whether a virtual key code represents an extended key.
 /// </summary>
@@ -2231,8 +2262,7 @@ begin
   // Move mouse & click
   SetCursorPos(X, Y);
 
-  mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
-  mouse_event(MOUSEEVENTF_LEFTUP,   0, 0, 0, 0);
+  SendMouseClick(MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP);
 end;
 
 { =================== Instance helpers =================== }
@@ -2254,6 +2284,7 @@ begin
   FHasInspectorPos := False;
   FStopRequested := False;
   FScriptRunning := False;
+  FStepLine := -1;
   FRecording := False;
   FScriptFilename := '';
   FScriptModified := False;
@@ -2642,8 +2673,7 @@ begin
     UpFlag := MOUSEEVENTF_LEFTUP;
   end;
 
-  mouse_event(DownFlag, 0, 0, 0, 0);
-  mouse_event(UpFlag, 0, 0, 0, 0);
+  SendMouseClick(DownFlag, UpFlag);
 end;
 
 /// <summary>
@@ -2930,18 +2960,16 @@ end;
 /// <param name="Sender" type="TObject">The object that triggered the event.</param>
 procedure TForm1.mmoScriptChange(Sender: TObject);
 begin
-  if mmoLineNumbers.Lines.Count <> mmoScript.Lines.Count then
-  begin
-    SendMessage(mmoLineNumbers.Handle, WM_SETREDRAW, 0, 0);
-    try
-      mmoLineNumbers.Lines.Clear;
+  FStepLine := -1;
+  SendMessage(mmoLineNumbers.Handle, WM_SETREDRAW, 0, 0);
+  try
+    mmoLineNumbers.Lines.Clear;
 
-      for var i := 0 to mmoScript.Lines.Count - 1 do
-        mmoLineNumbers.Lines.Add(IntToStr(i + 1));
-    finally
-      SendMessage(mmoLineNumbers.Handle, WM_SETREDRAW, 1, 0);
-      mmoLineNumbers.Invalidate;
-    end;
+    for var i := 0 to mmoScript.Lines.Count - 1 do
+      mmoLineNumbers.Lines.Add(IntToStr(i + 1));
+  finally
+    SendMessage(mmoLineNumbers.Handle, WM_SETREDRAW, 1, 0);
+    mmoLineNumbers.Invalidate;
   end;
 
   SyncLineNumbers;
@@ -4537,6 +4565,7 @@ begin
     Exit;
   end;
 
+  FStepLine := -1;
   LineOffset := 0;
   FirstLine := 0;
   LastLine := -1;
@@ -4601,6 +4630,88 @@ begin
   except
     on E: Exception do
     begin
+      if not ConsoleMode then
+        raise;
+      ConsoleExitCode := 1;
+      WriteConsoleText('Fatal error: ' + E.Message + sLineBreak);
+    end;
+  end;
+end;
+
+procedure TForm1.btnStepClick(Sender: TObject);
+var
+  Script: TStringList;
+  LineNumber: Integer;
+begin
+  if FScriptRunning then
+    Exit;
+
+  if FStepLine < 0 then
+  begin
+    if mmoScript.Lines.Count = 0 then
+    begin
+      lblStatus.Caption := 'There are no script lines to step through.';
+      Exit;
+    end;
+
+    LineNumber := SendMessage(mmoScript.Handle, EM_LINEFROMCHAR,
+      mmoScript.SelStart, 0);
+    if LineNumber < 0 then
+      LineNumber := 0
+    else if LineNumber >= mmoScript.Lines.Count then
+      LineNumber := mmoScript.Lines.Count - 1;
+    FAliases.Clear;
+  end
+  else
+    LineNumber := FStepLine;
+
+  if LineNumber >= mmoScript.Lines.Count then
+  begin
+    lblStatus.Caption := COMPLETEDALLTASKS;
+    Exit;
+  end;
+
+  FStepLine := LineNumber;
+  FStopRequested := False;
+  FScriptRunning := True;
+  mmoLineNumbers.Lines[LineNumber] :=
+    Format('%s %d', [RUNNING, LineNumber + 1]);
+  Script := TStringList.Create;
+  try
+    try
+      Script.Add(mmoScript.Lines[LineNumber]);
+      RunScriptLines(Script, 'MainScript', LineNumber);
+    finally
+      Script.Free;
+      FScriptRunning := False;
+    end;
+
+    if (LineNumber < mmoLineNumbers.Lines.Count) and
+      (Pos(ERROR, mmoLineNumbers.Lines[LineNumber]) = 1) then
+      Exit;
+
+    mmoLineNumbers.Lines[LineNumber] :=
+      Format('%s %d', [COMPLETED, LineNumber + 1]);
+    if FStopRequested then
+    begin
+      FStepLine := mmoScript.Lines.Count;
+      lblStatus.Caption := COMPLETEDALLTASKS;
+      Exit;
+    end;
+
+    Inc(FStepLine);
+    if FStepLine < mmoScript.Lines.Count then
+    begin
+      mmoLineNumbers.Lines[FStepLine] :=
+        Format('%s %d', [RUNNING, FStepLine + 1]);
+      lblStatus.Caption := Format('Ready to step line %d', [FStepLine + 1]);
+    end
+    else
+      lblStatus.Caption := COMPLETEDALLTASKS;
+  except
+    on E: Exception do
+    begin
+      FScriptRunning := False;
       if not ConsoleMode then
         raise;
       ConsoleExitCode := 1;
