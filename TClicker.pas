@@ -85,14 +85,13 @@ type
     procedure CreateParams(var Params: TCreateParams); override;
     procedure Paint; override;
     procedure WMMouseActivate(var Message: TWMMouseActivate);
-      message WM_MOUSEACTIVATE;
+    message WM_MOUSEACTIVATE;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     function ContainsInfoAt(const ScreenPos: TPoint): Boolean;
     procedure HideInfo;
-    procedure UpdateInspector(const TargetRect: TRect;
-      const CursorPos: TPoint; const Lines: TStrings);
+    procedure UpdateInspector(const TargetRect: TRect; const CursorPos: TPoint; const Lines: TStrings);
   end;
 
   TForm1 = class(TForm)
@@ -170,9 +169,8 @@ type
     procedure RecordMouseClick(ScreenX, ScreenY: Integer; const Button: string);
     function SetEditText(Edit: HWND; const Value: string): Boolean;
     procedure RunScriptFile(FileName: string);
-    procedure RunScriptLines(Lines: TStrings; const SourceName: string;
-      LineOffset: Integer = 0);
-    procedure PauseForScript(Duration: Cardinal);
+    procedure RunScriptLines(Lines: TStrings; const SourceName: string; LineOffset: Integer = 0);
+    procedure PauseForScript(Duration: Integer);
     procedure ClickElementInternal(const WindowName: string; var Token: string);
     function ExecuteCommand(const parts: TArray<string>; lineNumber: Integer; const SourceName: string): Boolean;
   end;
@@ -2453,7 +2451,7 @@ var
     ID: LongInt;
   begin
     Result := TStringList.Create;
-    Result.Add(Format('Mouse: X=%d  Y=%d', [Pt.X, Pt.Y]));
+    Result.Add(Format('Mouse: X=%d Y=%d', [Pt.X, Pt.Y]));
     if h = 0 then
     begin
       Result.Add('No object under cursor');
@@ -2557,7 +2555,7 @@ begin
 end;
 
 /// <summary>
-/// TForm1.btnLoadClick is called when the load button is clicked.
+/// TForm1.btnLoadClick is called when the load button is clicked from the File menu
 /// </summary>
 /// <param name="Sender" type="TObject">The object that triggered the event.</param>
 procedure TForm1.btnLoadClick(Sender: TObject);
@@ -2573,8 +2571,8 @@ begin
     if dlg.Execute then
     begin
       mmoScript.PlainText := True;
-      mmoScript.Lines.LoadFromFile(dlg.FileName, TEncoding.UTF8);
       FScriptFilename := dlg.FileName;
+      mmoScript.Lines.LoadFromFile(FScriptFilename, TEncoding.UTF8);
       FScriptModified := False;
       Caption := FScriptFilename + ' - Clicker';
     end;
@@ -3062,7 +3060,7 @@ begin
     SL.Add('    Loads a script relative to the current script folder, the Clicker.exe folder, or C:\Scripts (in that order). The .script extension is optional.');
     SL.Add('');
     SL.Add('  SetPause <time>');
-    SL.Add('    Sets the default time (in ms) between commands, the default is 100 ms');
+    SL.Add('    Sets the default time (in ms) between commands, the default is 100 ms. No default pause is added after Sleep, Load, or Alias.');
     SL.Add('  Sleep <milliseconds>');
     SL.Add('    Pauses execution for the specified time (default is 1 second). The default pause time is not added after Sleep.');
     SL.Add('  Alias <name> <value> or Alias <name> <x> <y>');
@@ -3151,6 +3149,8 @@ begin
     if FStopRequested then
     begin
       lblStatus.Caption := COMPLETEDALLTASKS;
+      mmoScript.Lines.Clear;
+      mmoScript.Lines.LoadFromFile(FScriptFilename, TEncoding.UTF8); //reset the script back to its initial state, due to 'load' commands changing it
       Exit;
     end;
 
@@ -3209,7 +3209,7 @@ begin
       Exit;
     end;
 
-    if not SameText(parts[0], 'Sleep') then
+    if not SameText(parts[0], 'Sleep') and not SameText(parts[0], 'Load') and not SameText(parts[0], 'Alias') then
       PauseForScript(StrToIntDef(edtPauseTime.Text, 100));
 
     if FStopRequested then
@@ -3222,21 +3222,10 @@ begin
   lblStatus.Caption := COMPLETEDALLTASKS;
 end;
 
-procedure TForm1.PauseForScript(Duration: Cardinal);
-var
-  Step: Cardinal;
+procedure TForm1.PauseForScript(Duration: Integer);
 begin
-  while (Duration > 0) and not FStopRequested do
-  begin
-    if Duration > 50 then
-      Step := 50
-    else
-      Step := Duration;
-
-    Sleep(Step);
-    Dec(Duration, Step);
-    Application.ProcessMessages;
-  end;
+  Sleep(Duration);
+  Application.ProcessMessages;
 end;
 
 /// <summary>
@@ -3964,8 +3953,7 @@ begin
       var ScreenX, ScreenY: Integer;
       var Button: string;
 
-      if (Length(parts) = 2) or
-        ((Length(parts) = 3) and TryResolveMousePointAlias(parts[1], ScreenX, ScreenY)) then
+      if (Length(parts) = 2) or ((Length(parts) = 3) and TryResolveMousePointAlias(parts[1], ScreenX, ScreenY)) then
       begin
         if Length(parts) = 2 then
         begin
@@ -4024,7 +4012,7 @@ begin
 
       if Length(parts) < 3 then
         raise Exception.CreateFmt(
-          'Error on line %d. SetText usage:' + CRLF + '  SetText <Name|Index|ID:nnn|HWND:hex> <text>' + CRLF + '  SetText <window> <Name|Index|ID:nnn|HWND:hex> <text>',
+          'Error on line %d. SetText usage:' + CRLF + ' SetText <Name|Index|ID:nnn|HWND:hex> <text>' + CRLF + ' SetText <window> <Name|Index|ID:nnn|HWND:hex> <text>',
           [lineNumber + 1]);
 
       if Length(parts) = 3 then
@@ -4217,7 +4205,7 @@ begin
         ShowTextDialog('Error', Format('File %s was not found.', [FileName]), 500, 200);
     end;
 
-    CmdLoad:
+    CmdLoad: //this is the load script command, not the load action of reading a script file from the File menu
     begin
       // Loads a script file relative to the current script folder, the Clicker.exe folder, or C:\Scripts (in that order). The .script extension is optional.
       if Length(parts) <> 2 then
@@ -4579,10 +4567,8 @@ begin
       Exit;
     end;
 
-    FirstLine := SendMessage(mmoScript.Handle, EM_LINEFROMCHAR,
-      SelectionStart, 0);
-    LastLine := SendMessage(mmoScript.Handle, EM_LINEFROMCHAR,
-      SelectionStart + SelectionLength - 1, 0);
+    FirstLine := SendMessage(mmoScript.Handle, EM_LINEFROMCHAR, SelectionStart, 0);
+    LastLine := SendMessage(mmoScript.Handle, EM_LINEFROMCHAR, SelectionStart + SelectionLength - 1, 0);
     if FirstLine < 0 then
       FirstLine := 0;
     if LastLine >= mmoScript.Lines.Count then
