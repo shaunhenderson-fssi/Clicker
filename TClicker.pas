@@ -3068,6 +3068,7 @@ begin
     SL.Add('  Assert <Button|Edit|Memo> <name|id|hwnd> "Expected text"');
     SL.Add('  Assert <Button|Edit|Memo> <WindowName> <name|id|hwnd> "Expected text"');
     SL.Add('  Assert Memo <screenX> <screenY> "Expected text"');
+    SL.Add('  Assert Memo <coordinateAlias> "Expected text"');
     SL.Add('    Finds the memo under the given screen coordinates; line breaks are treated as spaces');
     SL.Add('    The script will continue only when the expected text is found');
     SL.Add('    If WindowName is omitted, it will default to what is in the default window box');
@@ -4336,6 +4337,15 @@ begin
         WindowName := defaultWindowName.Text;
         Token := Format('%d,%d', [ScreenX, ScreenY]);
         Expected := parts[4];
+        MemoAtPoint := True;
+      end
+      else if (Length(parts) = 4) and SameText(parts[1], 'Memo') and
+        TryResolveMousePointAlias(parts[2], ScreenX, ScreenY) then
+      begin
+        Kind := parts[1];
+        WindowName := defaultWindowName.Text;
+        Token := Format('%d,%d', [ScreenX, ScreenY]);
+        Expected := parts[3];
         MemoAtPoint := True;
       end
       else if (Length(parts) = 4) and not SameText(parts[1], 'Color') then

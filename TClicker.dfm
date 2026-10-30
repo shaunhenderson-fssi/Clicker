@@ -141,7 +141,7 @@ object Form1: TForm1
       Top = 8
       Width = 100
       Height = 17
-      Caption = 'Hover text'
+      Caption = 'Inspector'
       TabOrder = 2
       OnClick = chkHoverTextClick
     end

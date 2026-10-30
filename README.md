@@ -74,6 +74,13 @@ coordinates are relative to the desktop, like `MouseClick`:
 Assert Memo 506 366 "Product not found"
 ```
 
+Screen coordinates can also be stored as an alias:
+
+```text
+Alias dialog 506 366
+Assert Memo dialog "Product not found"
+```
+
 The control under those coordinates (including a memo nested under another
 child control) is checked.
 
