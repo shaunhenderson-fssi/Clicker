@@ -57,6 +57,7 @@ uses
   System.Math,
   System.SysUtils, // Trim, SameText
   System.TypInfo, // PropInfo
+  System.Types, // TPoint and Point
   // System.UITypes, //MessageDlg
   System.Variants, // VarIsNull
   System.Win.ComObj, // CreateOleObject
@@ -72,7 +73,9 @@ uses
   Vcl.ExtCtrls, // TTimer
   Vcl.Forms, // TForm
   Vcl.Graphics, // fsBold
-  Vcl.StdCtrls, Vcl.Menus, System.ImageList, Vcl.ImgList; // TButton, TEdit, TLabel, etc
+  Vcl.StdCtrls,
+  Vcl.Menus,
+  System.ImageList, Vcl.ImgList; // TButton, TEdit, TLabel, etc
 
 type
   TInspectorOverlay = class(TForm)
@@ -581,9 +584,13 @@ end;
 /// </summary>
 procedure TInspectorOverlay.HideInfo;
 begin
-  if FInfoVisible then
+  if FInfoVisible or ((FTargetRect.Right > FTargetRect.Left) and
+    (FTargetRect.Bottom > FTargetRect.Top)) then
   begin
     FInfoVisible := False;
+    FTargetRect := Rect(0, 0, 0, 0);
+    FInfoRect := Rect(0, 0, 0, 0);
+    FInfoLines.Clear;
     Invalidate;
   end;
 end;
@@ -600,7 +607,8 @@ begin
   Canvas.Brush.Color := clFuchsia;
   Canvas.FillRect(ClientRect);
 
-  if (FTargetRect.Right > FTargetRect.Left) and
+  if FInfoVisible and
+    (FTargetRect.Right > FTargetRect.Left) and
     (FTargetRect.Bottom > FTargetRect.Top) then
   begin
     LocalTarget := FTargetRect;
@@ -850,6 +858,19 @@ begin
       Exit(True);
 end;
 
+function JoinPCharArray(const Separator: string; const Values: array of PChar): string;
+var
+  i: Integer;
+begin
+  Result := '';
+  for i := Low(Values) to High(Values) do
+  begin
+    if i > Low(Values) then
+      Result := Result + Separator;
+    Result := Result + string(Values[i]);
+  end;
+end;
+
 /// <summary>
 /// Enumerates child windows of a given parent window, collecting those that match "edit-like" classes into a list.
 /// </summary>
@@ -954,7 +975,8 @@ begin
   try
     Edits := GetAllDescendantEdits(Parent);
     if Length(Edits) = 0 then
-      Exit('No descendant Edit controls found. (Classes checked: Edit, TAKPEdit, TAKPScanEdit)');
+      Exit('No descendant Edit controls found. (Classes checked: ' +
+        JoinPCharArray(', ', EDIT_CLASS_NAMES) + ')');
 
     j := 0;
     for var i := 0 to High(Edits) do
@@ -1024,7 +1046,7 @@ begin
   try
     Btns := GetAllDescendantButtons(Parent);
     if Length(Btns) = 0 then
-      Exit('No descendant Button-like controls found. (Classes checked: Button, TAKPButton, TFSTouchButton)');
+      Exit('No descendant Button-like controls found. (Classes checked: ' + JoinPCharArray(', ', BUTTON_CLASS_NAMES) + ')');
 
     j := 0;
     for var i := 0 to High(Btns) do
@@ -1075,8 +1097,8 @@ begin
 
   Msg := '* ' + TitleOrClass + ' *' + CRLF +
     'Immediate children:' + CRLF + FormatWindowChildren(W) + CRLF + CRLF +
-    'Descendant Edits (Edit/TAKPEdit/TAKPScanEdit):' + CRLF + FormatEditsSummary(W) + CRLF + CRLF +
-    'Descendant Buttons (Button/TAKPButton/TFSTouchButton or any with text):' + CRLF + FormatButtonsSummary(W);
+    'Descendant Edits (' + JoinPCharArray(', ', EDIT_CLASS_NAMES) + '):' + CRLF + FormatEditsSummary(W) + CRLF + CRLF +
+    'Descendant Buttons (' + JoinPCharArray(', ', BUTTON_CLASS_NAMES) + ' or any with text):' + CRLF + FormatButtonsSummary(W);
 
   ShowTextDialog('Error', Msg);
   Result := True;
@@ -3098,11 +3120,10 @@ begin
     SL.Add('    Pauses execution for the specified time (default is 1 second). The default pause time is not added after Sleep.');
     SL.Add('  Alias <name> <value> or Alias <name> <x> <y>');
     SL.Add('    Defines a reusable value or screen-coordinate alias, e.g. `Alias zero 839 636` then `MouseClick zero`');
-    SL.Add('  Assert <Button|Edit|Memo> <name|id|hwnd> "Expected text"');
-    SL.Add('  Assert <Button|Edit|Memo> <WindowName> <name|id|hwnd> "Expected text"');
-    SL.Add('  Assert Memo <screenX> <screenY> "Expected text"');
-    SL.Add('  Assert Memo <coordinateAlias> "Expected text"');
-    SL.Add('    Finds the memo under the given screen coordinates; line breaks are treated as spaces');
+    SL.Add('  Assert <Button|Edit|Memo> <token|WindowName token> "Expected text"');
+    SL.Add('  Assert <Button|Edit|Memo> <screenX screenY|coordinateAlias> "Expected text"');
+    SL.Add('    Finds the control under the given screen coordinates');
+    SL.Add('    Memo line breaks are treated as spaces');
     SL.Add('    The script will continue only when the expected text is found');
     SL.Add('    If WindowName is omitted, it will default to what is in the default window box');
     SL.Add('    Memo IDs are also searched across top-level windows; use HWND:<hex> to target a memo directly');
@@ -4279,12 +4300,13 @@ begin
     begin
       // Usage:
       // Assert Button <token> "expected"
-      // Assert Edit   <token> "expected"
-      // Assert Memo   <token> "expected"
       // Assert Button "Window Name" <token> "expected"
+      // Assert Edit   <token> "expected"
       // Assert Edit   "Window Name" <token> "expected"
+      // Assert Memo   <token> "expected"
       // Assert Memo   "Window Name" <token> "expected"
-      // Assert Memo   <x> <y> "expected"
+      // Assert <Button|Edit|Memo> <screen X> <screen Y> "expected"
+      // Assert <Button|Edit|Memo> <coordinateAlias> "expected"
       // Assert Color X Y "named color"
       // Assert Color X Y "#HEX_CODE"
 
@@ -4373,7 +4395,8 @@ begin
 
         bOK := True;
       end
-      else if (Length(parts) = 5) and SameText(parts[1], 'Memo') and
+      else if (Length(parts) = 5) and
+        (SameText(parts[1], 'Button') or SameText(parts[1], 'Edit') or SameText(parts[1], 'Memo')) and
         TryStrToInt(parts[2], ScreenX) and TryStrToInt(parts[3], ScreenY) then
       begin
         Kind := parts[1];
@@ -4382,12 +4405,13 @@ begin
         Expected := parts[4];
         MemoAtPoint := True;
       end
-      else if (Length(parts) = 4) and SameText(parts[1], 'Memo') and
+      else if (Length(parts) = 4) and
+        (SameText(parts[1], 'Button') or SameText(parts[1], 'Edit') or SameText(parts[1], 'Memo')) and
         TryResolveMousePointAlias(parts[2], ScreenX, ScreenY) then
       begin
         Kind := parts[1];
         WindowName := defaultWindowName.Text;
-        Token := Format('%d,%d', [ScreenX, ScreenY]);
+        Token := parts[2];
         Expected := parts[3];
         MemoAtPoint := True;
       end
@@ -4412,7 +4436,8 @@ begin
           '%s:%d Assert usage:' + CRLF +
           '  Assert <Button|Edit|Memo> <token> "expected"' + CRLF +
           '  Assert <Button|Edit|Memo> "Window Name" <token> "expected"' + CRLF +
-          '  Assert Memo <screenX> <screenY> "expected"' + CRLF +
+          '  Assert <Button|Edit|Memo> <screenX> <screenY> "expected"' + CRLF +
+          '  Assert <Button|Edit|Memo> <coordinateAlias> "expected"' + CRLF +
           '  Assert Color <x> <y> <#RRGGBB|colorName>',
           [SourceName, lineNumber + 1]);
 
@@ -4424,7 +4449,15 @@ begin
 
         if SameText(Kind, 'Button') then
         begin
-          var Btn := ResolveControl(W, Token, BUTTON_CLASS_NAMES);
+          var Btn: HWND := 0;
+          if MemoAtPoint then
+          begin
+            Btn := DeepChildWindowFromPoint(Point(ScreenX, ScreenY));
+            if (Btn <> 0) and not IsClassIn(Btn, BUTTON_CLASS_NAMES) then
+              Btn := 0;
+          end
+          else
+            Btn := ResolveControl(W, Token, BUTTON_CLASS_NAMES);
           if Btn = 0 then
             raise Exception.CreateFmt(
               '%s:%d Button "%s" not found in window "%s"',
@@ -4500,7 +4533,15 @@ begin
         end
         else if SameText(Kind, 'Edit') then
         begin
-          var Control := ResolveControl(W, Token, EDIT_CLASS_NAMES);
+          var Control: HWND := 0;
+          if MemoAtPoint then
+          begin
+            Control := DeepChildWindowFromPoint(Point(ScreenX, ScreenY));
+            if (Control <> 0) and not IsClassIn(Control, EDIT_CLASS_NAMES) then
+              Control := 0;
+          end
+          else
+            Control := ResolveControl(W, Token, EDIT_CLASS_NAMES);
           if Control = 0 then
             raise Exception.CreateFmt(
               '%s:%d %s "%s" not found in window "%s"',
@@ -4669,6 +4710,7 @@ begin
       btnGo.Caption := 'Run all';
       btnGo.ImageIndex := IMAGE_PLAY;
       btnGo.Enabled := True;
+      lblStatus.Caption := COMPLETEDALLTASKS;
     end;
   except
     on E: Exception do

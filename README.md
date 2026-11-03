@@ -38,7 +38,8 @@ It can perform the following tasks:
 - If <"Button"|"Edit"> <WindowName> <name|id|hwnd> "Expected text"
 - Assert <Button|Edit|Memo> <name|id|hwnd> "Expected text"
 - Assert <Button|Edit|Memo> <WindowName> <name|id|hwnd> "Expected text"
-- Assert Memo <screenX> <screenY> "Expected text"
+- Assert <Button|Edit|Memo> <screenX> <screenY> "Expected text"
+- Assert <Button|Edit|Memo> <coordinateAlias> "Expected text"
 - Close <windowName>
 - Stop (halts the current script immediately and skips remaining commands)
 - Assert Color <x> <y> <#RRGGBB|colorName>
@@ -79,6 +80,17 @@ Screen coordinates can also be stored as an alias:
 ```text
 Alias dialog 506 366
 Assert Memo dialog "Product not found"
+```
+
+Coordinate aliases can assert buttons, edits, and memos:
+
+```text
+Alias search_button 412 439
+Assert Button search_button "Search"
+
+Assert Edit 512 539 "Expected value"
+Alias message 612 639
+Assert Memo message "Expected memo text"
 ```
 
 The control under those coordinates (including a memo nested under another
