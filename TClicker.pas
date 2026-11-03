@@ -269,6 +269,11 @@ const
   ERROR = '⚠';
   COMPLETEDALLTASKS = 'Completed all tasks';
 
+  IMAGE_PLAY = 0;
+  IMAGE_STEP = 1;
+  IMAGE_STOP = 2;
+  IMAGE_RECORD = 3;
+
   // UI Automation constants
   UIA_NamePropertyId = 30005;
   UIA_InvokePatternId = 10000;
@@ -362,19 +367,19 @@ end;
 type
   PMacroKeyboardHookInfo = ^TMacroKeyboardHookInfo;
   TMacroKeyboardHookInfo = record
-    vkCode: DWORD;
+    vkCode:   DWORD;
     scanCode: DWORD;
-    flags: DWORD;
-    time: DWORD;
+    flags:    DWORD;
+    time:     DWORD;
     dwExtraInfo: ULONG_PTR;
   end;
 
   PMacroMouseHookInfo = ^TMacroMouseHookInfo;
   TMacroMouseHookInfo = record
-    pt: TPoint;
-    mouseData: DWORD;
-    flags: DWORD;
-    time: DWORD;
+    pt:          TPoint;
+    mouseData:   DWORD;
+    flags:       DWORD;
+    time:        DWORD;
     dwExtraInfo: ULONG_PTR;
   end;
 
@@ -485,8 +490,7 @@ begin
         if ProcessId <> GetCurrentProcessId() then
         begin
           GRecorderForm.FlushRecordedText;
-          GRecorderForm.RecordMouseClick(MouseInfo.pt.X, MouseInfo.pt.Y,
-            Button);
+          GRecorderForm.RecordMouseClick(MouseInfo.pt.X, MouseInfo.pt.Y, Button);
         end;
       end
       else if wParam = WM_MOUSEWHEEL then
@@ -498,7 +502,8 @@ begin
         if ProcessId <> GetCurrentProcessId() then
         begin
           GRecorderForm.FlushRecordedText;
-          GRecorderForm.AppendRecordedCommand(Format('MouseWheel %d %d %d',
+          GRecorderForm.AppendRecordedCommand(Format(
+            'MouseWheel %d %d %d',
             [MouseInfo.pt.X, MouseInfo.pt.Y, WheelDelta]));
         end;
       end;
@@ -753,7 +758,10 @@ begin
     B.Parent := F;
     B.Caption := 'Close';
     B.ModalResult := mrOK;
-    B.Align := alBottom;
+    B.Align := alNone;
+    B.Width := 200;
+    B.Left := (F.ClientWidth - B.Width) div 2;
+    B.Top := F.ClientHeight - B.Height - 10;
     B.Default := True;
     B.Cancel := True;
 
@@ -2486,13 +2494,13 @@ var
       R := Rect(0, 0, 0, 0);
 
     ID := GetWindowLong(h, GWL_ID);
-    Result.Add('Object class: ' + string(ClassNameBuffer));
     Result.Add(Format('ID: %d  HWND: %p', [ID, Pointer(h)]));
-    Result.Add('Parent: ' + ParentText);
-    Result.Add('Pos: ' + RectToStr(R));
+    Result.Add(Format('Pos: %s', [RectToStr(R)]));
+    Result.Add(Format('Object class: %s', [string(ClassNameBuffer)]));
+    Result.Add(Format('Parent: %s', [ParentText]));
     Result.Add(Format('Left: %d  Top: %d', [R.Left, R.Top]));
     Result.Add(Format('Width: %d  Height: %d', [R.Right - R.Left, R.Bottom - R.Top]));
-    Result.Add('Caption: ' + CaptionText);
+    Result.Add(Format('Caption: %s', [CaptionText]));
   end;
 
 begin
@@ -2548,7 +2556,6 @@ begin
   if not chkHoverText.Checked then
   begin
     FInspectorOverlay.HideInfo;
-    //Caption := FScriptFilename + ' - Clicker';
   end;
 
   mmoScript.SetFocus;
@@ -2704,7 +2711,7 @@ begin
   if FRecordedText = '' then
     Exit;
 
-  AppendRecordedCommand('TypeText ' + QuoteScriptToken(FRecordedText));
+  AppendRecordedCommand(Format('TypeText %s', [QuoteScriptToken(FRecordedText)]));
   FRecordedText := '';
 end;
 
@@ -2729,7 +2736,7 @@ begin
   WindowName := GetWindowTextSafe(Root);
 
   if SameText(Button, 'Left') and IsClassIn(Control, BUTTON_CLASS_NAMES) and (ButtonName <> '') and (WindowName <> '') then
-    AppendRecordedCommand('ClickButton ' + QuoteScriptToken(WindowName) + ' ' + QuoteScriptToken(ButtonName))
+    AppendRecordedCommand(Format('ClickButton %s %s', [QuoteScriptToken(WindowName), QuoteScriptToken(ButtonName)]))
   else
   begin
     if (Control <> 0) and GetWindowRect(Control, ControlRect) and
@@ -2762,13 +2769,11 @@ begin
   begin
     FillChar(GRecordedKeys, SizeOf(GRecordedKeys), 0);
     FRecordedText := '';
-    GKeyboardRecordHook := SetWindowsHookEx(WH_KEYBOARD_LL,
-      @LowLevelKeyboardRecordProc, HInstance, 0);
+    GKeyboardRecordHook := SetWindowsHookEx(WH_KEYBOARD_LL, @LowLevelKeyboardRecordProc, HInstance, 0);
     if GKeyboardRecordHook = 0 then
       RaiseLastOSError;
 
-    GMouseRecordHook := SetWindowsHookEx(WH_MOUSE_LL,
-      @LowLevelMouseRecordProc, HInstance, 0);
+    GMouseRecordHook := SetWindowsHookEx(WH_MOUSE_LL, @LowLevelMouseRecordProc, HInstance, 0);
     if GMouseRecordHook = 0 then
     begin
       ErrorCode := GetLastError;
@@ -2790,15 +2795,13 @@ begin
     FRecording := False;
     UnhookFailed := False;
     ErrorCode := 0;
-    if (GKeyboardRecordHook <> 0) and
-      not UnhookWindowsHookEx(GKeyboardRecordHook) then
+    if (GKeyboardRecordHook <> 0) and not UnhookWindowsHookEx(GKeyboardRecordHook) then
     begin
       UnhookFailed := True;
       ErrorCode := GetLastError;
     end;
     GKeyboardRecordHook := 0;
-    if (GMouseRecordHook <> 0) and
-      not UnhookWindowsHookEx(GMouseRecordHook) then
+    if (GMouseRecordHook <> 0) and not UnhookWindowsHookEx(GMouseRecordHook) then
     begin
       if not UnhookFailed then
         ErrorCode := GetLastError;
@@ -2848,6 +2851,7 @@ begin
       KeyboardState[VK_SHIFT] := KeyboardState[VK_SHIFT] or $80
     else
       KeyboardState[VK_SHIFT] := KeyboardState[VK_SHIFT] and $7F;
+
     if VKCode <= High(KeyboardState) then
       KeyboardState[VKCode] := KeyboardState[VKCode] or $80;
 
@@ -2947,9 +2951,9 @@ begin
   Chord := Chord + KeyName;
 
   if KeyName.Contains(';') or KeyName.Contains('#') then
-    AppendRecordedCommand('PressKey "' + Chord + '"')
+    AppendRecordedCommand(Format('PressKey "%s"', [Chord]))
   else
-    AppendRecordedCommand('PressKey ' + Chord);
+    AppendRecordedCommand(Format('PressKey %s', [Chord]));
 end;
 
 /// <summary>
@@ -3141,6 +3145,13 @@ var
   sourceLineNumber: Integer;
   Line: string;
   parts: TArray<string>;
+
+  procedure resetMainWindow;
+  begin
+    mmoScript.Lines.Clear;
+    mmoScript.Lines.LoadFromFile(FScriptFilename, TEncoding.UTF8); //reset the script back to its initial state, due to 'load' commands changing it
+  end;
+
 begin
   //please note ANY error is fatal
   for lineNumber := 0 to Lines.Count - 1 do
@@ -3150,8 +3161,7 @@ begin
     if FStopRequested then
     begin
       lblStatus.Caption := COMPLETEDALLTASKS;
-      mmoScript.Lines.Clear;
-      mmoScript.Lines.LoadFromFile(FScriptFilename, TEncoding.UTF8); //reset the script back to its initial state, due to 'load' commands changing it
+      resetMainWindow;
       Exit;
     end;
 
@@ -3171,6 +3181,7 @@ begin
     if FStopRequested then
     begin
       lblStatus.Caption := COMPLETEDALLTASKS;
+      resetMainWindow;
       Exit;
     end;
 
@@ -3207,6 +3218,7 @@ begin
     if FStopRequested then
     begin
       lblStatus.Caption := COMPLETEDALLTASKS;
+      resetMainWindow;
       Exit;
     end;
 
@@ -3216,11 +3228,13 @@ begin
     if FStopRequested then
     begin
       lblStatus.Caption := COMPLETEDALLTASKS;
+      resetMainWindow;
       Exit;
     end;
   end;
 
   lblStatus.Caption := COMPLETEDALLTASKS;
+  resetMainWindow;
 end;
 
 procedure TForm1.PauseForScript(Duration: Integer);
@@ -4322,8 +4336,8 @@ begin
 
           if MatchCount < numberOfTimesToMatch then
             raise Exception.CreateFmt(
-              '%s:%d Pixel color mismatch at (%d, %d). Expected %s in at least %d%% of samples; matched %d. Last sample was #%6.6x',
-              [SourceName, lineNumber + 1, ScreenX, ScreenY, parts[4], Round(numberOfTimesToMatch / numberOfTimesToLoop * 100), MatchCount, ActualColor]);
+              '%s:%d Pixel color mismatch at (%d, %d). Expected %s, actual is #%6.6x',
+              [SourceName, lineNumber + 1, ScreenX, ScreenY, parts[4], ActualColor]);
         finally
           ReleaseDC(0, ScreenDC);
         end;
@@ -4445,9 +4459,13 @@ begin
           Expected := NormalizeMemoText(DecodeMemoExpectedText(Expected));
           var Actual := NormalizeMemoText(GetControlText(Control));
           if not SameText(Actual, Expected) then
+          begin
+            if not ConsoleMode then
+              ShowTextDialog('Actual memo text', Actual, 400, 300);
             raise Exception.CreateFmt(
-              '%s:%d Memo "%s" text mismatch. Expected "%s", got "%s"',
+              '%s:%d Memo "%s" text mismatch. Expected:' + CRLF + '%s' + CRLF + 'Actual:' + CRLF + '%s',
               [SourceName, lineNumber + 1, Token, Expected, Actual]);
+          end;
 
           bOK := True;
         end
@@ -4594,7 +4612,7 @@ begin
   FScriptRunning := True;
   FStopRequested := False;
   btnGo.Caption := 'Stop';
-  btnGo.ImageIndex := 1;
+  btnGo.ImageIndex := IMAGE_STOP;
   FAliases.Clear;
   Script := TStringList.Create;
   try
@@ -4620,7 +4638,7 @@ begin
       Script.Free;
       FScriptRunning := False;
       btnGo.Caption := 'Run all';
-      btnGo.ImageIndex := 0;
+      btnGo.ImageIndex := IMAGE_PLAY;
       btnGo.Enabled := True;
     end;
   except
@@ -4629,7 +4647,7 @@ begin
       if not ConsoleMode then
         raise;
       ConsoleExitCode := 1;
-      WriteConsoleText('Fatal error: ' + E.Message + sLineBreak);
+      WriteConsoleText(Format('Fatal error: %s' + sLineBreak, [E.Message]));
     end;
   end;
 end;
@@ -4670,8 +4688,7 @@ begin
   FStepLine := LineNumber;
   FStopRequested := False;
   FScriptRunning := True;
-  mmoLineNumbers.Lines[LineNumber] :=
-    Format('%s %d', [RUNNING, LineNumber + 1]);
+  mmoLineNumbers.Lines[LineNumber] := Format('%s %d', [RUNNING, LineNumber + 1]);
   Script := TStringList.Create;
   try
     try
@@ -4686,8 +4703,7 @@ begin
       (Pos(ERROR, mmoLineNumbers.Lines[LineNumber]) = 1) then
       Exit;
 
-    mmoLineNumbers.Lines[LineNumber] :=
-      Format('%s %d', [COMPLETED, LineNumber + 1]);
+    mmoLineNumbers.Lines[LineNumber] := Format('%s %d', [COMPLETED, LineNumber + 1]);
     if FStopRequested then
     begin
       FStepLine := mmoScript.Lines.Count;
@@ -4698,8 +4714,7 @@ begin
     Inc(FStepLine);
     if FStepLine < mmoScript.Lines.Count then
     begin
-      mmoLineNumbers.Lines[FStepLine] :=
-        Format('%s %d', [RUNNING, FStepLine + 1]);
+      mmoLineNumbers.Lines[FStepLine] := Format('%s %d', [RUNNING, FStepLine + 1]);
       lblStatus.Caption := Format('Ready to step line %d', [FStepLine + 1]);
     end
     else
@@ -4711,7 +4726,7 @@ begin
       if not ConsoleMode then
         raise;
       ConsoleExitCode := 1;
-      WriteConsoleText('Fatal error: ' + E.Message + sLineBreak);
+      WriteConsoleText(Format('Fatal error: %s' + sLineBreak, [E.Message]));
     end;
   end;
 end;

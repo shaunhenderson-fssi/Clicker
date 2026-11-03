@@ -191,7 +191,7 @@ object Form1: TForm1
         Width = 80
         Height = 25
         Caption = 'Record'
-        ImageIndex = 2
+        ImageIndex = 3
         ImageName = 'record'
         ImageMargins.Left = 10
         Images = ImageList1
