@@ -735,7 +735,7 @@ begin
     OutputText := Text;
     if OutputText = '' then
       OutputText := sLineBreak
-    else if OutputText[Length(OutputText)] <> #10 then
+    else if OutputText[Length(OutputText)] <> LF then
       OutputText := OutputText + sLineBreak;
     WriteConsoleText(OutputText);
     Exit;
@@ -1945,9 +1945,9 @@ function DescribeWindow(h: HWND): string;
   var
     p: Integer;
   begin
-    p := Pos(#13, S);
+    p := Pos(CR, S);
     if p = 0 then
-      p := Pos(#10, S);
+      p := Pos(LF, S);
 
     if p > 0 then
       Result := Copy(S, 1, p - 1)
@@ -2498,8 +2498,8 @@ var
     if CaptionText = '' then
       CaptionText := GetCaptionAtPoint(Pt);
 
-    CaptionText := StringReplace(CaptionText, #13, ' ', [rfReplaceAll]);
-    CaptionText := StringReplace(CaptionText, #10, ' ', [rfReplaceAll]);
+    CaptionText := StringReplace(CaptionText, CR, ' ', [rfReplaceAll]);
+    CaptionText := StringReplace(CaptionText, LF, ' ', [rfReplaceAll]);
 
     if Length(CaptionText) > 100 then
       CaptionText := Copy(CaptionText, 1, 97) + '...';
@@ -3865,12 +3865,12 @@ var
             end;
           'r':
             begin
-              Result := Result + #13;
+              Result := Result + CR;
               Inc(i, 2);
             end;
           'n':
             begin
-              Result := Result + #10;
+              Result := Result + LF;
               Inc(i, 2);
             end;
         else
@@ -3896,10 +3896,10 @@ var
     i := 1;
     while i <= Length(Value) do
     begin
-      if CharInSet(Value[i], [#13, #10]) then
+      if CharInSet(Value[i], [CR, LF]) then
       begin
         AddSpace := Result <> '';
-        if (Value[i] = #13) and (i < Length(Value)) and (Value[i + 1] = #10) then
+        if (Value[i] = CR) and (i < Length(Value)) and (Value[i + 1] = LF) then
           Inc(i, 2)
         else
           Inc(i);
