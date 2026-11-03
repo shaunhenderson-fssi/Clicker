@@ -2484,10 +2484,10 @@ var
     Red, Green, Blue: Byte;
   begin
     Result := TStringList.Create;
-    Result.Add(Format('Mouse: X=%d Y=%d', [Pt.X, Pt.Y]));
 
     if h = 0 then
     begin
+      Result.Add(Format('Mouse: X=%d Y=%d', [Pt.X, Pt.Y]));
       Result.Add('No object under cursor');
       Exit;
     end;
@@ -2520,9 +2520,11 @@ var
       R := Rect(0, 0, 0, 0);
 
     ID := GetWindowLong(h, GWL_ID);
-    //mouse pos is above
+    Result.Add(Format('Parent: %s', [ParentText]));
     Result.Add(Format('ID: %d  HWND: %p', [ID, Pointer(h)]));
+    Result.Add(Format('Caption: %s', [CaptionText]));
     Result.Add(Format('Pos: %s', [RectToStr(R)]));
+    Result.Add(Format('Mouse: X=%d Y=%d', [Pt.X, Pt.Y]));
 
     //color under mouse cursor
     ScreenDC := GetDC(0);
@@ -2548,10 +2550,8 @@ var
       Result.Add('Color: unavailable');
 
     Result.Add(Format('Object class: %s', [string(ClassNameBuffer)]));
-    Result.Add(Format('Parent: %s', [ParentText]));
     Result.Add(Format('Left: %d  Top: %d', [R.Left, R.Top]));
     Result.Add(Format('Width: %d  Height: %d', [R.Right - R.Left, R.Bottom - R.Top]));
-    Result.Add(Format('Caption: %s', [CaptionText]));
   end;
 
 begin
