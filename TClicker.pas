@@ -1834,6 +1834,13 @@ begin
     Result := GetParent(Result);
 end;
 
+function FindEditAtPoint(const PtScreen: TPoint): HWND;
+begin
+  Result := DeepChildWindowFromPoint(PtScreen);
+  while (Result <> 0) and not IsEditLike(Result) do
+    Result := GetParent(Result);
+end;
+
 /// <summary>
 /// Gets the text of a window in a safe manner, using the GetControlWindowText function to handle potential issues with certain window types.
 /// </summary>
@@ -3198,8 +3205,11 @@ var
 
   procedure resetMainWindow;
   begin
-    mmoScript.Lines.Clear;
-    mmoScript.Lines.LoadFromFile(FScriptFilename, TEncoding.UTF8); //reset the script back to its initial state, due to 'load' commands changing it
+    if not FScriptModified then
+    begin
+      mmoScript.Lines.Clear;
+      mmoScript.Lines.LoadFromFile(FScriptFilename, TEncoding.UTF8); //reset the script back to its initial state, due to 'load' commands changing it
+    end;
   end;
 
 begin
@@ -4092,7 +4102,12 @@ begin
             [lineNumber + 1, defaultWindowName.Text]
           );
 
-        var EditWnd := ResolveEditHandle(RootWnd, ResolveAlias(parts[1]));
+        var ScreenX, ScreenY: Integer;
+        var EditWnd := 0;
+        if TryResolveMousePointAlias(parts[1], ScreenX, ScreenY) then
+          EditWnd := FindEditAtPoint(Point(ScreenX, ScreenY))
+        else
+          EditWnd := ResolveEditHandle(RootWnd, ResolveAlias(parts[1]));
         if EditWnd = 0 then
           raise Exception.CreateFmt(
             'Error on line %d. No Edit matched "%s" under "%s".',
@@ -4114,7 +4129,12 @@ begin
             [lineNumber + 1, parts[1]]
           );
 
-        var EditWnd := ResolveEditHandle(RootWnd, ResolveAlias(parts[2]));
+        var ScreenX, ScreenY: Integer;
+        var EditWnd := 0;
+        if TryResolveMousePointAlias(parts[2], ScreenX, ScreenY) then
+          EditWnd := FindEditAtPoint(Point(ScreenX, ScreenY))
+        else
+          EditWnd := ResolveEditHandle(RootWnd, ResolveAlias(parts[2]));
         if EditWnd = 0 then
           raise Exception.CreateFmt(
             'Error on line %d. No Edit matched "%s" under "%s".',
