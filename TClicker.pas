@@ -2142,6 +2142,57 @@ begin
   Result := Trim(t);
 end;
 
+function NormalizeControlText(const S: string): string;
+var
+  I: Integer;
+begin
+  Result := LowerCase(NormalizeLabel(S));
+  I := 1;
+  while I <= Length(Result) do
+  begin
+    if Result[I] = ' ' then
+      Delete(Result, I, 1)
+    else
+      Inc(I);
+  end;
+end;
+
+function EditControlTextDistance(const A, B: string): Integer;
+var
+  PreviousRow, CurrentRow, TempRow: array of Integer;
+  I, J, Cost, Width, Height: Integer;
+begin
+  Height := Length(A);
+  Width := Length(B);
+  SetLength(PreviousRow, Width + 1);
+  SetLength(CurrentRow, Width + 1);
+
+  for J := 0 to Width do
+    PreviousRow[J] := J;
+
+  for I := 1 to Height do
+  begin
+    CurrentRow[0] := I;
+    for J := 1 to Width do
+    begin
+      if A[I] = B[J] then
+        Cost := 0
+      else
+        Cost := 1;
+
+      CurrentRow[J] := Min(
+        Min(CurrentRow[J - 1] + 1, PreviousRow[J] + 1),
+        PreviousRow[J - 1] + Cost);
+    end;
+
+    TempRow := PreviousRow;
+    PreviousRow := CurrentRow;
+    CurrentRow := TempRow;
+  end;
+
+  Result := PreviousRow[Width];
+end;
+
 /// <summary>
 /// Requires a dialog window by its title or class name, with the ability to specify additional class names to consider during the search.
 /// If the window is not found, an exception is raised.
@@ -3045,6 +3096,12 @@ procedure TForm1.ScriptWindowProc(var Message: TMessage);
 begin
   FScriptWindowProc(Message);
 
+  if (Message.Msg = WM_KEYDOWN) and (Message.WParam = VK_ESCAPE) and chkHoverText.Checked then
+  begin
+    chkHoverText.Checked := False;
+    chkHoverTextClick(chkHoverText);
+  end;
+
   case Message.Msg of
     WM_VSCROLL, WM_MOUSEWHEEL, WM_KEYDOWN, WM_CHAR:
       SyncLineNumbers;
@@ -3328,12 +3385,15 @@ var
     LabelRect, EditRect: TRect;
     BestEdit: HWND;
     BestDx: Integer;
-    Wanted: string;
+    Wanted, CandidateText: string;
+    CandidateDistance, BestLabelDistance, AllowedDistance: Integer;
   begin
     Result := 0;
     BestEdit := 0;
     BestDx := MaxInt;
-    Wanted := NormalizeLabel(LabelText);
+    BestLabelDistance := MaxInt;
+    Wanted := NormalizeControlText(LabelText);
+    AllowedDistance := Max(2, Length(Wanted) div 4);
 
     LabelHwnd := 0;
     while True do
@@ -3344,8 +3404,20 @@ var
 
       if GetWindowText(LabelHwnd, TextBuf, Length(TextBuf)) > 0 then
       begin
-        if SameText(NormalizeLabel(TextBuf), Wanted) then
+        CandidateText := NormalizeControlText(string(TextBuf));
+        CandidateDistance := EditControlTextDistance(Wanted, CandidateText);
+        if CandidateDistance <= AllowedDistance then
         begin
+          if CandidateDistance > BestLabelDistance then
+            Continue;
+
+          if CandidateDistance < BestLabelDistance then
+          begin
+            BestLabelDistance := CandidateDistance;
+            BestDx := MaxInt;
+            BestEdit := 0;
+          end;
+
           GetWindowRect(LabelHwnd, LabelRect);
 
           var Edits := GetAllDescendantEdits(Parent);
@@ -3370,11 +3442,11 @@ var
             end;
           end;
 
-          if BestEdit <> 0 then
-            Exit(BestEdit);
         end;
       end;
     end;
+
+    Result := BestEdit;
   end;
 
 begin
