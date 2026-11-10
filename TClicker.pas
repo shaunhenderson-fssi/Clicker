@@ -75,7 +75,10 @@ uses
   Vcl.Graphics, // fsBold
   Vcl.StdCtrls,
   Vcl.Menus,
-  System.ImageList, Vcl.ImgList; // TButton, TEdit, TLabel, etc
+  System.ImageList, Vcl.ImgList,
+  System.Win.Registry,
+  Vcl.Styles,
+  Vcl.Themes;
 
 type
   TInspectorOverlay = class(TForm)
@@ -136,6 +139,7 @@ type
     procedure btnLoadClick(Sender: TObject);
     procedure btnSaveClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
+    procedure FormShow(Sender: TObject);
     procedure Quit1Click(Sender: TObject);
     procedure Reference1Click(Sender: TObject);
     procedure Encryption1Click(Sender: TObject);
@@ -156,9 +160,13 @@ type
     FInspectorOverlay: TInspectorOverlay;
     FLastInspectorPos: TPoint;
     FHasInspectorPos: Boolean;
+    FThemeInitialized: Boolean;
+    FIsDarkTheme: Boolean;
 
     procedure ScriptWindowProc(var Message: TMessage);
     procedure LineNumbersWindowProc(var Message: TMessage);
+    procedure ApplySystemTheme;
+    procedure WMSettingChange(var Message: TMessage); message WM_SETTINGCHANGE;
     procedure SyncLineNumbers;
     function SaveScript: Boolean;
     procedure EncryptClick(Sender: TObject);
@@ -310,6 +318,7 @@ procedure WriteConsoleText(const Text: string);
 implementation
 
 {$R *.dfm}
+{$R ClickerDarkStyle.res}
 { ===================== Mouse inspector (unit-scope) ===================== }
 
 procedure InitializeConsoleOutput;
@@ -2361,6 +2370,9 @@ procedure TForm1.FormCreate(Sender: TObject);
 var
   RunScriptProc: TThreadProcedure;
 begin
+  FThemeInitialized := False;
+  FIsDarkTheme := False;
+
   FScriptWindowProc := mmoScript.WindowProc;
   mmoScript.WindowProc := ScriptWindowProc;
   FLineNumbersWindowProc := mmoLineNumbers.WindowProc;
@@ -2411,6 +2423,53 @@ begin
     else
       raise Exception.CreateFmt('Script file not found: %s', [FScriptFilename]);
   end;
+end;
+
+procedure TForm1.FormShow(Sender: TObject);
+begin
+  ApplySystemTheme;
+end;
+
+procedure TForm1.ApplySystemTheme;
+const
+  PersonalizeKey = 'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize';
+var
+  Registry: TRegistry;
+  IsDark: Boolean;
+begin
+  IsDark := False;
+  Registry := TRegistry.Create(KEY_READ);
+  try
+    Registry.RootKey := HKEY_CURRENT_USER;
+    if Registry.OpenKeyReadOnly(PersonalizeKey) then
+    begin
+      try
+        if Registry.ValueExists('AppsUseLightTheme') then
+          IsDark := Registry.ReadInteger('AppsUseLightTheme') = 0;
+      finally
+        Registry.CloseKey;
+      end;
+    end;
+  finally
+    Registry.Free;
+  end;
+
+  if FThemeInitialized and (FIsDarkTheme = IsDark) then
+    Exit;
+
+  if IsDark then
+    TStyleManager.SetStyle('Windows10 Dark')
+  else
+    TStyleManager.SetStyle(TStyleManager.SystemStyle);
+
+  FIsDarkTheme := IsDark;
+  FThemeInitialized := True;
+end;
+
+procedure TForm1.WMSettingChange(var Message: TMessage);
+begin
+  inherited;
+  ApplySystemTheme;
 end;
 
 /// <summary>

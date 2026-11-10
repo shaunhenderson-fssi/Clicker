@@ -98,6 +98,10 @@ child control) is checked.
 
 In the program, use Help > Reference to get a list of commands and an explanation of usage
 
+The main window follows the Windows app theme setting (Settings > Personalization >
+Colors > Choose your mode). If you use Custom mode, set the default app mode to
+Dark. Clicker updates automatically when the Windows setting changes.
+
 Script lines support inline comments beginning with `;`, `#`, or `//`. The
 comment marker and everything after it are ignored through the end of the line.
 Comment markers inside double-quoted text are preserved. A `#RRGGBB` value

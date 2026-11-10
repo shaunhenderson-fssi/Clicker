@@ -3,7 +3,9 @@ program Clicker;
 uses
   System.SysUtils,
   Vcl.Forms,
-  TClicker in 'TClicker.pas' {Form1};
+  TClicker in 'TClicker.pas' {Form1},
+  Vcl.Themes,
+  Vcl.Styles;
 
 {$R *.res}
 
@@ -40,8 +42,9 @@ begin
       Application.MainFormOnTaskbar := True;
       Application.ShowMainForm := not ConsoleMode;
       Application.OnException := ExceptionHandler.HandleException;
-      Application.CreateForm(TForm1, Form1);
-      if not ConsoleMode then
+      TStyleManager.TrySetStyle('Windows10 Dark');
+  Application.CreateForm(TForm1, Form1);
+  if not ConsoleMode then
         Application.Run;
     except
       on E: Exception do

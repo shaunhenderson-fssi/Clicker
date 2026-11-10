@@ -85,6 +85,7 @@ object Form1: TForm1
   Menu = MainMenu1
   OnCreate = FormCreate
   OnDestroy = FormDestroy
+  OnShow = FormShow
   TextHeight = 15
   object grpTop: TGroupBox
     Left = 0
