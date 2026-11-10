@@ -3388,7 +3388,6 @@ var
     Wanted, CandidateText: string;
     CandidateDistance, BestLabelDistance, AllowedDistance: Integer;
   begin
-    Result := 0;
     BestEdit := 0;
     BestDx := MaxInt;
     BestLabelDistance := MaxInt;
