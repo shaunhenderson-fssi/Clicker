@@ -3234,11 +3234,11 @@ begin
     SL.Add('  TypePassword <encryptedText> or TypePassword <form|dialog> <field|control> <encryptedText>');
     SL.Add('    Types in a password using TypeText. Use the Help > Encryption menu to encrypt text. This allows using passwords in script files.');
     SL.Add('    Tip: if using the short form, use MouseClick before this so the mouse can focus on the control');
+    SL.Add('');
     SL.Add('  Load <filename>');
     SL.Add('    Loads a script relative to the current script folder, the Clicker.exe folder, or C:\Scripts (in that order). The .script extension is optional.');
-    SL.Add('');
     SL.Add('  SetPause <time>');
-    SL.Add('    Sets the default time (in ms) between commands, the default is 100 ms. No default pause is added after Sleep, Load, or Alias.');
+    SL.Add('    Sets the global default time (in ms) between commands, the default is 100 ms. No default pause is added after Sleep, Load, or Alias.');
     SL.Add('  Sleep <milliseconds>');
     SL.Add('    Pauses execution for the specified time (default is 1 second). The default pause time is not added after Sleep.');
     SL.Add('  Alias <name> <value> or Alias <name> <x> <y>');
@@ -3257,6 +3257,7 @@ begin
     SL.Add('    Custom color: clYellowPNS is RGB 254,216,3 (#FED803)');
     SL.Add('  Close <windowName>');
     SL.Add('    Closes a window or dialog');
+    SL.Add('');
     SL.Add('  Stop');
     SL.Add('    Stops the current script immediately; all remaining commands are skipped');
     SL.Add('  LaneTool');
@@ -3268,6 +3269,21 @@ begin
     SL.Add('    Tip: you can use the Sleep command to pause, then move the mouse into position');
     SL.Add('');
     SL.Add('You can also use this in a batch file e.g. `Clicker.exe "C:\Scripts\filename.script"` and it will load and run the filename script');
+    SL.Add('  From here, you can use ERRORLEVEL to detect whether the script passed or failed. ERRORLEVEL 0 means success, ERRORLEVEL 1 means failure:');
+    SL.Add('    @echo off');
+    SL.Add('    setlocal');
+    SL.Add('');
+    SL.Add('    set "CLICKER=C:\Program Files\Clicker\Clicker.exe"');
+    SL.Add('    set "SCRIPT=C:\Scripts\Normal Sale.script"');
+    SL.Add('');
+    SL.Add('    "%CLICKER%" --console "%SCRIPT%"');
+    SL.Add('    if errorlevel 1 (');
+    SL.Add('        echo Script failed. Check the script and try again.');
+    SL.Add('        exit /b 1');
+    SL.Add('    )');
+    SL.Add('');
+    SL.Add('    echo Script completed successfully.');
+    SL.Add('    exit /b 0');
 
     ShowTextDialog('Reference', SL.Text, 830, 600, true);
   finally
