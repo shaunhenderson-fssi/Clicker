@@ -1,0 +1,16 @@
+﻿;Normal sale, assumes already logged in
+Alias ScanField 90 674 ;2429320
+Alias dialog 506 366
+
+Assert color 90 15 #000080 ;ensures someone is logged in
+
+MouseClick ScanField ;barcode entry field
+
+TypeText 9412345678901 ;check digit incorrect
+PressKey Enter
+Sleep 500
+
+;shows dialog 
+Assert Memo dialog "Barcode check digit is invalid Barcode 9412345678901 Please try again"
+ClickButton formDlg Ok
+

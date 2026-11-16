@@ -1,0 +1,47 @@
+﻿;Item over limit, assumes already logged in
+//in DBView, this is Items.A10 and in code this is Attrib10 
+//(look for CheckItemBarcodeLimitOnScan and LogicCheckManualQtyValid)
+
+Alias ScanField 90 674
+Alias dialog 506 366 ;this is the dialog that pops up in the middle of POS
+Alias payment_choices_top 552 173
+Alias "Complete sale" 1758 740
+Alias "Print least" 484 295
+
+Assert color 90 15 #000080 ;ensures someone is logged in
+
+;item 1
+MouseClick ScanField
+TypeText 9400553438786 ;gingernuts
+PressKey Enter
+Sleep 5000
+
+;item 2
+MouseClick ScanField
+TypeText 9400553438786 ;gingernuts
+PressKey Enter
+Sleep 5000
+
+;item 3, should not be allowed
+MouseClick ScanField
+TypeText 9400553438786 ;gingernuts
+PressKey Enter
+Sleep 5000
+
+assert memo dialog "Only 2 items are permitted per sale."
+MouseClick 482 476 ; OK
+
+;ClickButton "Touch Screen" "Complete sale"
+MouseClick "Complete Sale"
+Sleep 2000 ;give time for dialog to show
+
+ClickButton "formDlg" "No Card"
+Sleep 500
+
+;keep default payment method (cash)
+ClickButton Payment OK
+Sleep 300
+
+MouseClick payment_choices_top ;first payment button
+MouseClick "Print least"
+Sleep 2000;allows time to complete the sale, ready for next test

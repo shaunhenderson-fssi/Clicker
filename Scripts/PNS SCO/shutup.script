@@ -1,0 +1,10 @@
+;Turns the volume down
+;Can be run from most screens
+
+MouseClick volume
+
+MouseClick 163 589 ;volume down
+MouseClick 163 589 ;volume down
+MouseClick 163 589 ;volume down
+
+MouseClick 163 624 ;go back

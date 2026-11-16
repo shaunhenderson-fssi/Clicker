@@ -1,0 +1,13 @@
+; This will load and run ALL scripts, so will take a long time to run!
+Load "Normal sale for SCO"
+Load "Suspend transaction on SCO"
+Load "Recalled item on SCO"
+Load "Not sold at SCO"
+Load "Visual verify on SCO"
+Load "Age restricted item (wine) on SCO" ;yes this script file name is ok :)
+Load "Item over limits on SCO"
+Load "Unknown item on SCO"
+
+;check to see if its back on the welcome screen (this works for both PNS and NW)
+Assert color 276 433 white
+Assert color 389 376 black

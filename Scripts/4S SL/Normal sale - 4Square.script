@@ -1,0 +1,14 @@
+﻿;Normal sale, assumes already logged in
+;load sl_buttons
+Alias scanfield 90 674
+Assert color 90 15 #000080 ;ensures someone is logged in
+
+Mouseclick scanfield
+TypeText 9414982020900 ;kenya bold
+PressKey Enter
+Sleep 5000
+
+Load "Complete sale"
+
+Sleep 1000 ;allows time to complete the sale, ready for next test
+

@@ -1,0 +1,51 @@
+﻿//This will refund a completed sale. Assumptions:
+//There needs to be at least 1 completed sale to refund
+//A non elevated user needs to be logged in already
+
+Alias "Load trans" 756 174
+Alias SearchButton 412 439
+Alias OK_button 847 250
+Alias Refund_button 756 174
+
+ClickButton Transact
+Assert Button "Load trans" "Load complete&d transaction"
+ClickButton "Select an option" "Load complete&d transaction" //note the ampersand
+Assert Button SearchButton "Search"
+ClickButton "Completed transactions" "Search"
+Assert Button OK_button "OK"
+ClickButton "Select a transaction" OK
+Sleep 1000
+
+ClickButton Transact
+Assert Button Refund_button "Refund Completed Sale"
+ClickButton "Select an option" "Refund Completed Sale"
+
+//requires higher elevation/intervention
+SetText "Refund completed sale" "Name" 8546 ;Bill
+TypePassword "Refund completed sale" Password 84F87BF5
+ClickButton "Refund Completed Sale" OK
+
+//complete cash payment
+//assumes there is at least 1 item in the sale
+
+Alias "Complete sale" 1758 740
+Alias dialog 506 366
+Alias top_button 552 173
+Alias "Print least" 484 295
+
+MouseClick "Complete sale"
+Sleep 1000
+
+;asks for Club+ card
+Assert memo dialog "Club+ card If your customer has a Club+ card, choose cancel then scan their card"
+ClickButton "formDlg" "No Card"
+Sleep 100
+
+ClickButton Payment OK ;this auto selects Cash
+Sleep 100
+
+MouseClick top_button
+Sleep 100
+
+MouseClick "Print least"
+Sleep 500

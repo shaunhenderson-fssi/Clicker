@@ -1,0 +1,24 @@
+﻿;Visual verify. This is applicable for SCO ONLY
+Alias ScanField 90 674
+Alias "Complete sale" 1758 740
+alias top_payment_button 552 173
+alias print_least 484 250
+
+Assert color 90 16 #000080 ;ensures someone is logged in
+
+SetText ScanField 9310537101332 ;beehive gas lighter
+PressKey Enter
+Sleep 1000
+
+stop
+
+;needs login here
+;SetText "Sell protected items" "Name" 8546 ;Bill
+;TypePassword "Sell protected items" Password 84F87BF5
+;ClickButton "Sell protected items" OK ;this does not work for some reason
+;PressKey Enter
+;Sleep 200
+
+Load "Complete sale"
+Sleep 500 ;allows time to complete the sale, ready for next test
+

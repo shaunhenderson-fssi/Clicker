@@ -1,0 +1,33 @@
+;Recalled item on SCO
+;Assumes SCO is logged in and ready for a normal sale
+
+Sleep 3000 ;gives time to click on the main POS/SCO app, bring to focus
+SetPause 1000 ;set time between commands to 1second for testing
+
+Load SCO_buttons
+Load shutup ;turn the volume down
+
+;start
+MouseClick start
+MouseClick assistance
+MouseClick store_login
+
+SetPause 200
+Load login
+SetPause 1000
+
+MouseClick assist_mode
+MouseClick key_in_code
+
+SetPause 200
+Load item_recalled
+SetPause 1000
+
+MouseClick return_shopping_mode
+sleep 2000
+
+MouseClick pay ;return to main screen
+sleep 1000
+
+Assert color 276 433 white
+Assert color 389 376 black

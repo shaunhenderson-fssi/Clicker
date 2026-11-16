@@ -1,0 +1,24 @@
+﻿//complete cash payment
+//assumes there is at least 1 item in the sale
+
+Alias "Complete sale" 1758 740
+Alias dialog 506 366
+Alias top_button 552 173
+Alias "Print least" 484 295
+
+MouseClick "Complete sale"
+Sleep 1000
+
+;asks for Club+ card
+Assert memo dialog "Club+ card If your customer has a Club+ card, choose cancel then scan their card"
+ClickButton "formDlg" "No Card"
+Sleep 100
+
+ClickButton Payment OK ;this auto selects Cash
+Sleep 100
+
+MouseClick top_button
+Sleep 100
+
+MouseClick "Print least"
+Sleep 500

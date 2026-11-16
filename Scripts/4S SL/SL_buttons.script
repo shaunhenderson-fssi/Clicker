@@ -1,0 +1,169 @@
+﻿;This file does not run anything, just sets aliases for SL buttons
+;This assumes a 2560x1440 screen (standard for INCA devs)
+;Alias names must not contain spaces, use underscore or "double quotes" instead
+;Use it like this: `MouseClick <alias name>`
+
+Alias scanfield 90 674 ;edit box for entering barcodes
+Alias most_recent_item 316 56 ;in case anyone wants to click the top-most item that has been scanned in the list
+
+;POS buttons
+Alias cust 69 753
+    alias customer_code 474 364
+    alias second_code 476 406
+    alias short_name 476 446
+    alias customer_name 476 488 ;note the text says "name"
+
+    alias customer_search 652 310
+    alias customer_letters 652 378
+    alias customer_cancel 652 447
+
+Alias trans 189 753
+    alias recall_suspended_transaction 756 112
+    alias load_completed_transaction 756 174
+    alias load_voided_transaction 756 237
+    alias swap_sales 756 299
+    alias forgotten_lost_card_enquiry 756 337
+    alias trans_cancel 756 424
+
+Alias discount 309 753
+    alias amount_off 756 112
+    alias percentage_off 756 174
+    alias change_price 756 212
+    alias discount_cancel 756 274
+
+Alias eftpos 429 753
+    alias eftpos_cashout 756 112
+    alias eftpos_functions 756 112
+    alias reprint_last_eftpos_receipt 756 112
+    alias eov_remaining 756 112
+    alias reset_pinpad 756 112
+    alias test_eftpos_links 756 112
+    alias refresh_links 756 112
+    alias eftpos_cancel 756 112
+
+Alias other 549 753
+    alias reprint_last_receipt 756 112
+    alias lock_station 756 174
+    alias open_drawer 756 237
+    alias customer_account_payment 756 299
+    alias cash_a_cheque 756 362
+    alias other_system 756 424
+    alias more 756 487
+    alias other_cancel 756 550
+
+Alias query 669 753
+    alias current_sale_item_lookup 756 112
+    alias item_lookup 756 174
+    alias customer_lookup 756 237
+    alias drilldown_lookup 756 299
+    alias information 756 362
+    alias todays_lane_sales_total 756 424
+    alias network_status 756 487
+    alias query_cancel 756 550
+
+Alias ep 789 753
+Alias drilldown 909 753
+
+;Keys at right of POS
+Alias left 1185 51 ;<-
+Alias down 1567 51 ;\/
+Alias up 1948 51 ;/\
+Alias right 2330 51 ;->
+
+Alias esc 1246 138 ;green
+Alias backsp 1762 138
+Alias plus 2274 138 ;+
+
+Alias sale2 1246 222
+Alias exit 1762 222 ;green
+Alias minus 2274 222 ;-
+
+Alias dept 1246 308 ;purple
+Alias qty 1762 308
+Alias error_corr 2274 308 ;green
+
+Alias r7 1173 393 ;seven
+Alias r8 1511 393 ;eight
+Alias r9 1849 393 ;nine
+Alias void 2033 393 ;yellow
+
+Alias r4 1173 477 ;four
+Alias r5 1511 477 ;five
+Alias r6 1849 477 ;six
+Alias tare 2033 477 ;yellow
+
+Alias r1 1173 562 ;one
+Alias r2 1511 562 ;two
+Alias r3 1849 562 ;three
+Alias renter 2033 562 ;yellow
+
+Alias r0 1342 647 ;zero
+Alias rpoint 1849 647 ; .
+
+Alias complete_sale 1758 740
+
+;Buttons on the lower keyboard
+Alias keyboard 127 954
+;custom buttons, the name may change
+Alias grocery 368 870
+Alias dairy_deli 624 870
+Alias butchery 878 870
+Alias hardware 1134 870
+Alias frozen 1388 870
+Alias service_deli 1644 870
+Alias produce 1898 870
+Alias bakery 2154 870
+Alias liz_merano 2408 870
+;same as above
+Alias custom1 368 870
+Alias custom2 624 870
+Alias custom3 878 870
+Alias custom4 1134 870
+Alias custom5 1388 870
+Alias custom6 1644 870
+Alias custom7 1898 870
+Alias custom8 2154 870
+Alias custom9 2408 870
+
+Alias system 358 1022
+Alias q 570 1022
+Alias w 752 1022
+Alias e 935 1022
+Alias r 1117 1022
+Alias t 1300 1022
+Alias y 1482 1022
+Alias u 1666 1022
+Alias i 1847 1022
+Alias o 2030 1022
+Alias p 2212 1022
+Alias tab 2421 1022
+
+Alias presets 127 1274
+Alias eft 405 1176
+Alias a 662 1176
+Alias s 842 1176
+Alias d 1025 1176
+Alias f 1207 1176
+Alias g 1390 1176
+Alias h 1570 1176
+Alias j 1752 1176
+Alias k 1395 1176
+Alias l 2117 1176
+Alias bEnter 2374 1174 ;can also use `PressKey Enter`
+
+Alias caps 360 1332
+Alias space 606 1332
+Alias z 826 1332
+Alias x 1016 1332
+Alias c 1204 1332
+Alias v 1390 1332
+Alias b 1578 1332
+Alias n 1770 1332
+Alias m 1960 1332
+;Alias space 2297 1332
+
+Alias payment_choices_top 552 173 ;top item in the payment choices dialog for cash payment
+Alias print_least 484 250 ;after payment is complete, green buttons
+Alias print_least_4sq 484 295 ;for 4 square only (there is only 2 buttons)
+
+Alias dialog 506 366

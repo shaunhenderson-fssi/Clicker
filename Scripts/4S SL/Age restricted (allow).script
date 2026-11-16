@@ -1,0 +1,46 @@
+﻿;Age verification (allow), assumes already logged in as a non priveleged user
+
+Alias "or enter partial description" 453 456
+Alias dialogx 506 366
+Alias ScanField 90 674
+
+Assert color 90 15 #000080 ;ensures someone is logged in
+
+;search for sauvignon
+clickbutton Query
+Sleep 200
+clickbutton "Select an option" "Item lookup"
+Sleep 200
+
+MouseClick "or enter partial description"
+Typetext "sauvignon"
+PressKey Enter
+Sleep 5000
+
+ClickButton "Select Item" OK
+Sleep 200
+
+ClickButton "Line details" "Add to sale"
+Sleep 5000
+
+;shows a dialog box asking for age auth
+Assert memo dialogx "Check customer is over 18 years old. Ask for proof of identity if in doubt. Birthday must be on or before {TODAY-18Y} (authorisation required)"
+ClickButton formDlg OK
+Sleep 5000
+
+;now need to click cancel out of the Item Query dialog
+ClickButton "Item Query" Cancel
+Sleep 1000
+
+//enter auth details
+;Alias ScanField 90 674
+MouseClick ScanField
+TypeText "`r`s"
+PressKey Enter
+Sleep 500
+
+//just choose date not needed (allow)
+ClickButton "Age Restricted Items in Sale" "Date not needed"
+Sleep 1000
+
+Load "Complete sale"

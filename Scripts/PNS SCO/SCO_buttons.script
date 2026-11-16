@@ -1,0 +1,103 @@
+﻿;This file does not run anything, just sets aliases for SCO buttons
+;Use it like this: `MouseClick <alias name>`
+
+;Search or Key in Item
+alias right_zero  839 636 ;0
+alias right_one   839 445 ;1
+alias right_two   908 445 ;2
+alias right_three 976 445 ;3
+alias right_four  839 510 ;4
+alias right_five  908 510 ;5
+alias right_six   976 510 ;6
+alias right_seven 839 572 ;7
+alias right_eight 908 572 ;8
+alias right_nine  976 572 ;9
+alias r0          839 636
+alias r1          839 445
+alias r2          908 445
+alias r3          976 445
+alias r4          839 510
+alias r5          908 510
+alias r6          976 510
+alias r7          839 572
+alias r8          908 572
+alias r9          976 572
+alias right_ok    941 636 ;ok
+
+;key in code
+alias k1    268 333
+alias k2    342 333
+alias k3    417 333
+alias k4    268 396
+alias k5    342 396
+alias k6    417 396
+alias k7    268 461
+alias k8    342 461
+alias k9    417 461
+alias kback 268 525
+alias k0    379 525
+alias kok   342 590 ;enter
+
+;Login
+alias login_one   431 356 ;1
+alias login_two   511 356 ;2
+alias login_three 593 356 ;3
+alias login_four  431 422 ;4
+alias login_five  511 422 ;5
+alias login_six   593 422 ;6
+alias login_seven 431 484 ;7
+alias login_eight 511 484 ;8
+alias login_nine  593 484 ;9
+alias login_back  431 548 ;<
+alias login_zero  511 548 ;0
+alias login_ok    593 548 ;✓
+alias l1          431 356
+alias l2          511 356
+alias l3          593 356
+alias l4          431 422
+alias l5          511 422
+alias l6          593 422
+alias l7          431 484
+alias l8          511 484
+alias l9          593 484
+alias l0          511 548
+alias lok         593 548 ;✓
+
+;Common buttons
+alias start       472 509
+alias search      457 629
+alias assistance   61 729
+alias volume      164 729
+alias store_login 126 615 ;small blue text, lower right. clicking this requires supervisor intervention
+alias pay         833 731
+
+;from assistance screen, has caption "Store Authorisation"
+alias close_lane           193 243
+alias suspend_transaction  501 243
+alias reporting            193 328
+alias system_functions     501 328
+alias cash_paper_status    193 412
+alias assist_mode          501 412
+alias pos_menu             193 493
+;alias other_button         501 493
+alias return_shopping_mode 193 718 ;need a small pause after this because it takes some time
+
+;assist mode
+alias key_in_code       185 242
+alias price_change      493 242
+alias quantity_change   186 326
+alias key_in_department 493 326
+
+alias other_payment_methods 341 535
+alias vendor_coupon         167 338
+alias login                 514 519
+alias yes                   190 292
+
+alias confirm_suspend 191 446
+alias cancel_suspend  499 446
+
+alias approve_items 184 238
+alias excess_ok     188 327
+
+alias age_verify_approve 493 242
+alias age_verify_deny    487 325

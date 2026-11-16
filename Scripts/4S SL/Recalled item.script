@@ -1,0 +1,17 @@
+﻿;Trying to purchase recalled item, assumes already logged in
+Alias ScanField 90 674
+Alias "Complete sale" 1758 740
+alias dialog 506 366
+
+Assert color 90 16 #000080 ;ensures someone is logged in
+
+SetText ScanField 9400539150060 ;recalled item
+PressKey Enter
+Sleep 5000
+
+;try to detect dialog box 
+assert memo dialog "Item has been RECALLED! Do NOT allow customer to take this item."
+
+//MouseClick 482 476 //OK button on dialog
+ClickButton formDlg Ok ;482 476 //OK button on dialog
+Sleep 500

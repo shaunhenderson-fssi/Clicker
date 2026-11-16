@@ -1,0 +1,22 @@
+﻿;Recall last suspended transaction
+
+Alias button_trans 189 753 //cust, TRANS, discount, eftpos...
+Alias recall_trans 756 112
+Alias search_button 412 439
+
+Assert color 90 15 #000080 ;ensures someone is logged in
+
+MouseClick button_trans
+Sleep 500
+
+assert button recall_trans "Recall suspended transaction"
+MouseClick recall_trans
+;dialog box opens asking to enter 10 digit barcode, we dont have one
+
+assert button search_button "Search"
+ClickButton "Suspended transactions" "Search"
+;list opens showing all suspended transactions, just click ok because last one is highlighted already
+ClickButton "Select a transaction" "OK"
+Sleep 1000
+
+Load "Complete sale"

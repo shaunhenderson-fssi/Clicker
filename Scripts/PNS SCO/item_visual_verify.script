@@ -1,0 +1,18 @@
+;visual verify
+;beehive gas lighter
+MouseClick k9
+
+MouseClick k3
+MouseClick k1
+MouseClick k0
+MouseClick k5
+MouseClick k3
+MouseClick k7
+
+MouseClick k1
+MouseClick k0
+MouseClick k1
+MouseClick k3
+MouseClick k3
+MouseClick k2
+MouseClick kok

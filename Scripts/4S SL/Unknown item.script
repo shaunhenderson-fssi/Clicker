@@ -1,0 +1,15 @@
+﻿;Normal sale, assumes already logged in
+Alias ScanField 90 674 ;2429320
+Alias dialog 506 366
+
+Assert color 90 15 #000080 ;ensures someone is logged in
+
+MouseClick ScanField ;barcode entry field
+
+TypeText 9414567890126 ;unknown item
+PressKey Enter
+Sleep 5000
+
+;shows dialog "Product not found"
+Assert Memo dialog "Product not found 9414567890126"
+ClickButton formDlg Ok
