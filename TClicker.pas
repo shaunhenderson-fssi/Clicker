@@ -61,6 +61,7 @@ uses
   // System.UITypes, //MessageDlg
   System.Variants, // VarIsNull
   System.Win.ComObj, // CreateOleObject
+  System.DateUtils, // IncYear
 
   Winapi.ActiveX, // CoInitialize
   Winapi.Messages, // Scroll stuff
@@ -162,6 +163,8 @@ type
     FHasInspectorPos: Boolean;
     FThemeInitialized: Boolean;
     FIsDarkTheme: Boolean;
+    FCurrentScriptLine: Integer;
+    FCurrentScriptName: string;
 
     procedure ScriptWindowProc(var Message: TMessage);
     procedure LineNumbersWindowProc(var Message: TMessage);
@@ -3253,7 +3256,6 @@ begin
     SL.Add('    Memo assertions treat line breaks as spaces');
     SL.Add('  Assert Color <x> <y> <#RRGGBB|colorName>');
     SL.Add('    Checks the pixel color at the specified screen coordinates, e.g. Assert Color 121 254 #1a2b3c or Assert Color 321 222 red');
-    SL.Add('    Samples up to 10 times, 100 ms apart; the expected color must match at least 8 samples.');
     SL.Add('    Custom color: clYellowPNS is RGB 254,216,3 (#FED803)');
     SL.Add('  Close <windowName>');
     SL.Add('    Closes a window or dialog');
@@ -3327,8 +3329,7 @@ end;
 /// </summary>
 /// <param name="Lines" type="TStrings">The list of script lines to execute.</param>
 /// <param name="SourceName" type="string">The name of the source containing the script lines.</param>
-procedure TForm1.RunScriptLines(Lines: TStrings; const SourceName: string;
-  LineOffset: Integer);
+procedure TForm1.RunScriptLines(Lines: TStrings; const SourceName: string; LineOffset: Integer);
 var
   lineNumber: Integer;
   sourceLineNumber: Integer;
@@ -3356,6 +3357,9 @@ begin
       resetMainWindow;
       Exit;
     end;
+
+    FCurrentScriptLine := sourceLineNumber + 1; // +1 because line numbers are 1-based for the user
+    FCurrentScriptName := SourceName;
 
     Line := Trim(Lines[lineNumber]);
     if Line = '' then
@@ -4069,6 +4073,22 @@ var
         Inc(i);
       end;
     end;
+
+    //put custom replacements here
+
+    Result := StringReplace(
+      Result,
+      '{TODAY-16Y}',
+      FormatDateTime('dd/mm/yyyy', IncYear(Date, -16)),
+      [rfReplaceAll, rfIgnoreCase]
+    );
+
+    Result := StringReplace(
+      Result,
+      '{TODAY-18Y}',
+      FormatDateTime('dd/mm/yyyy', IncYear(Date, -18)),
+      [rfReplaceAll, rfIgnoreCase]
+    );
   end;
 
 begin
@@ -4281,6 +4301,7 @@ begin
           EditWnd := FindEditAtPoint(Point(ScreenX, ScreenY))
         else
           EditWnd := ResolveEditHandle(RootWnd, ResolveAlias(parts[2]));
+
         if EditWnd = 0 then
           raise Exception.CreateFmt(
             'Error on line %d. No Edit matched "%s" under "%s".',
@@ -4884,7 +4905,8 @@ begin
       if not ConsoleMode then
         raise;
       ConsoleExitCode := 1;
-      WriteConsoleText(Format('Fatal error: %s' + sLineBreak, [E.Message]));
+      WriteConsoleText(Format('Fatal error in %s at line %d: %s%s',
+        [FCurrentScriptName, FCurrentScriptLine, E.Message, sLineBreak]));
     end;
   end;
 end;
@@ -4963,7 +4985,8 @@ begin
       if not ConsoleMode then
         raise;
       ConsoleExitCode := 1;
-      WriteConsoleText(Format('Fatal error: %s' + sLineBreak, [E.Message]));
+      WriteConsoleText(Format('Fatal error in %s at line %d: %s%s',
+        [FCurrentScriptName, FCurrentScriptLine, E.Message, sLineBreak]));
     end;
   end;
 end;
