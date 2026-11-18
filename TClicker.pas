@@ -4966,6 +4966,7 @@ begin
     finally
       Script.Free;
       FScriptRunning := False;
+      EndDebugMouseClick;
       btnGo.Caption := 'Run all';
       btnGo.ImageIndex := IMAGE_PLAY;
       btnGo.Enabled := True;
@@ -5028,6 +5029,7 @@ begin
     finally
       Script.Free;
       FScriptRunning := False;
+      EndDebugMouseClick;
     end;
 
     if (LineNumber < mmoLineNumbers.Lines.Count) and

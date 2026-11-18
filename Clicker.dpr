@@ -42,8 +42,7 @@ begin
       Application.MainFormOnTaskbar := True;
       Application.ShowMainForm := not ConsoleMode;
       Application.OnException := ExceptionHandler.HandleException;
-      TStyleManager.TrySetStyle('Windows10 Dark');
-  Application.CreateForm(TForm1, Form1);
+      Application.CreateForm(TForm1, Form1);
   if not ConsoleMode then
         Application.Run;
     except
