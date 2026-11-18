@@ -88,6 +88,7 @@ type
     FInfoRect: TRect;
     FInfoLines: TStringList;
     FInfoVisible: Boolean;
+    FClickMarkerVisible: Boolean;
   protected
     procedure CreateParams(var Params: TCreateParams); override;
     procedure Paint; override;
@@ -98,7 +99,9 @@ type
     destructor Destroy; override;
     function ContainsInfoAt(const ScreenPos: TPoint): Boolean;
     procedure HideInfo;
+    procedure HideClickMarker;
     procedure UpdateInspector(const TargetRect: TRect; const CursorPos: TPoint; const Lines: TStrings);
+    procedure UpdateClickMarker(const CursorPos: TPoint);
   end;
 
   TForm1 = class(TForm)
@@ -415,6 +418,8 @@ function LowLevelKeyboardRecordProc(nCode: Integer; wParam: WPARAM; lParam: LPAR
 function LowLevelMouseRecordProc(nCode: Integer; wParam: WPARAM; lParam: LPARAM): LRESULT; stdcall; forward;
 function DeepChildWindowFromPoint(const PtScreen: TPoint): HWND; forward;
 function DescribeAtPoint(const PtScreen: TPoint): string; forward;
+procedure BeginDebugMouseClick(X, Y: Integer); forward;
+procedure EndDebugMouseClick; forward;
 
 /// <summary>
 /// Adds quotes around a string and escapes any internal quotes by doubling them.
@@ -607,6 +612,15 @@ begin
   end;
 end;
 
+procedure TInspectorOverlay.HideClickMarker;
+begin
+  if FClickMarkerVisible then
+  begin
+    FClickMarkerVisible := False;
+    Hide;
+  end;
+end;
+
 /// <summary>
 /// Refreshes the display of the TInspectorOverlay, drawing a fuchsia background,
 /// a dotted red rectangle around the target area, and any informational text lines.
@@ -632,6 +646,15 @@ begin
     Canvas.Rectangle(LocalTarget);
   end;
 
+  if FClickMarkerVisible then
+  begin
+    Canvas.Pen.Color := clRed;
+    Canvas.Pen.Style := psSolid;
+    Canvas.Pen.Width := 3;
+    Canvas.Brush.Style := bsClear;
+    Canvas.Ellipse(ClientRect);
+  end;
+
   if FInfoVisible then
   begin
     TextY := FInfoRect.Top + 3;
@@ -650,6 +673,23 @@ begin
       Inc(TextY, 18);
     end;
   end;
+end;
+
+procedure TInspectorOverlay.UpdateClickMarker(const CursorPos: TPoint);
+const
+  MARKER_SIZE = 40;
+begin
+  FInfoVisible := False;
+  FTargetRect := Rect(0, 0, 0, 0);
+  FInfoRect := Rect(0, 0, 0, 0);
+  FInfoLines.Clear;
+  FClickMarkerVisible := True;
+  SetBounds(CursorPos.X - MARKER_SIZE div 2,
+    CursorPos.Y - MARKER_SIZE div 2, MARKER_SIZE, MARKER_SIZE);
+  SetWindowPos(Handle, HWND_TOPMOST, Left, Top, Width, Height,
+    SWP_NOACTIVATE or SWP_SHOWWINDOW);
+  Invalidate;
+  UpdateWindow(Handle);
 end;
 
 /// <summary>
@@ -711,6 +751,29 @@ begin
 end;
 
 { =================== Unit-scope helpers =================== }
+procedure BeginDebugMouseClick(X, Y: Integer);
+begin
+{$IFDEF DEBUG}
+  if Assigned(Form1) and Assigned(Form1.FInspectorOverlay) then
+  begin
+    Form1.FHasInspectorPos := False;
+    Form1.FInspectorOverlay.UpdateClickMarker(Point(X, Y));
+    Sleep(500);
+  end;
+{$ENDIF}
+end;
+
+procedure EndDebugMouseClick;
+begin
+{$IFDEF DEBUG}
+  if Assigned(Form1) and Assigned(Form1.FInspectorOverlay) then
+  begin
+    Form1.FInspectorOverlay.HideClickMarker;
+    Form1.FHasInspectorPos := False;
+  end;
+{$ENDIF}
+end;
+
 /// <summary>
 /// Finds the top-level window with the specified title or class name.
 /// </summary>
@@ -2359,8 +2422,12 @@ begin
 
   // Move mouse & click
   SetCursorPos(X, Y);
-
-  SendMouseClick(MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP);
+  BeginDebugMouseClick(X, Y);
+  try
+    SendMouseClick(MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP);
+  finally
+    EndDebugMouseClick;
+  end;
 end;
 
 { =================== Instance helpers =================== }
@@ -2832,6 +2899,7 @@ var
   DownFlag, UpFlag: DWORD;
 begin
   SetCursorPos(ScreenX, ScreenY);
+  BeginDebugMouseClick(ScreenX, ScreenY);
 
   if SameText(Button, 'Right') then
   begin
@@ -2849,7 +2917,11 @@ begin
     UpFlag := MOUSEEVENTF_LEFTUP;
   end;
 
-  SendMouseClick(DownFlag, UpFlag);
+  try
+    SendMouseClick(DownFlag, UpFlag);
+  finally
+    EndDebugMouseClick;
+  end;
 end;
 
 /// <summary>

@@ -11,6 +11,7 @@ It has the following features:
 - Can run scripts in console mode and print script output to standard output
 - Can run the selected script lines from the editor
 - Can step through individual script commands, this is useful for debugging scripts
+- In Debug builds, show a red circle at the cursor and pause briefly before simulated mouse clicks
 - Comments
 
 Run a script without opening the editor:
