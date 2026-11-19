@@ -20,6 +20,20 @@ Run a script without opening the editor:
 Clicker.exe --console path\to\script.script
 ```
 
+To enable debug mode when running from a batch file, add `Debug=true` after the script path:
+
+```text
+Clicker.exe --console path\to\script.script Debug=true
+```
+
+For example, the included `single-script.bat` accepts it as an optional second argument:
+
+```text
+single-script.bat "Normal Sale.script" Debug=true
+```
+
+`Debug=false` can be used to explicitly disable it. The option is case-insensitive.
+
 Console mode returns exit code `0` on success and `1` if the script or program encounters an error. The existing `Clicker.exe <script-file>` invocation
 continues to run the script in the GUI.
 
@@ -34,6 +48,7 @@ It can perform the following tasks:
 - TypePassword <encryptedText> or TypePassword <form|dialog> <field|control> <encryptedText> (this means unencrypted passwords are not stored in scripts)
 - Load <filename> (searched relative to the current script, Clicker.exe, then C:\Scripts; `.script` extension is optional)
 - SetPause <time> (global pause time in between commands)
+- DebugMode On|Off (enables or disables debug mode and updates the form checkbox)
 - Sleep <milliseconds>
 - Alias <name> <value>
 - Assert <Button|Edit|Memo> <name|id|hwnd> "Expected text"

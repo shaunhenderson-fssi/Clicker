@@ -132,6 +132,7 @@ type
     lblPauseTime: TLabel;
     edtPauseTime: TEdit;
     ImageList1: TImageList;
+    chkDebugMode: TCheckBox;
 
     procedure btnGoClick(Sender: TObject);
     procedure btnStepClick(Sender: TObject);
@@ -172,7 +173,9 @@ type
     procedure ScriptWindowProc(var Message: TMessage);
     procedure LineNumbersWindowProc(var Message: TMessage);
     procedure ApplySystemTheme;
+    procedure ApplyScriptEditorTheme(IsDark: Boolean);
     procedure WMSettingChange(var Message: TMessage); message WM_SETTINGCHANGE;
+    procedure WMApplySystemTheme(var Message: TMessage); message WM_APP + 1;
     procedure SyncLineNumbers;
     function SaveScript: Boolean;
     procedure EncryptClick(Sender: TObject);
@@ -267,6 +270,7 @@ type
     CmdPressKey,
     CmdDumpHere,
     CmdSetPause,
+    CmdDebugMode,
     CmdSleep,
     CmdLanetool,
     CmdAssert,
@@ -317,11 +321,15 @@ var
   FAliases: TStringList;
   ConsoleMode: Boolean = False;
   ConsoleExitCode: Integer = 0;
+  DebugMode: Boolean = False;
 
 procedure InitializeConsoleOutput;
 procedure WriteConsoleText(const Text: string);
 
 implementation
+
+const
+  WM_APPLY_SYSTEM_THEME = WM_APP + 1;
 
 {$R *.dfm}
 {$R ClickerDarkStyle.res}
@@ -623,7 +631,7 @@ end;
 
 /// <summary>
 /// Refreshes the display of the TInspectorOverlay, drawing a fuchsia background,
-/// a dotted red rectangle around the target area, and any informational text lines.
+/// a dotted green rectangle around the target area, and any informational text lines.
 /// </summary>
 procedure TInspectorOverlay.Paint;
 var
@@ -639,7 +647,7 @@ begin
   begin
     LocalTarget := FTargetRect;
     OffsetRect(LocalTarget, -Left, -Top);
-    Canvas.Pen.Color := clRed;
+    Canvas.Pen.Color := clGreen;
     Canvas.Pen.Style := psDot;
     Canvas.Pen.Width := 2;
     Canvas.Brush.Style := bsClear;
@@ -648,7 +656,7 @@ begin
 
   if FClickMarkerVisible then
   begin
-    Canvas.Pen.Color := clRed;
+    Canvas.Pen.Color := clGreen;
     Canvas.Pen.Style := psSolid;
     Canvas.Pen.Width := 3;
     Canvas.Brush.Style := bsClear;
@@ -659,13 +667,13 @@ begin
   begin
     TextY := FInfoRect.Top + 3;
     Canvas.Font.Color := clBlack;
+
     for I := 0 to FInfoLines.Count - 1 do
     begin
       for YOffset := -1 to 1 do
         for XOffset := -1 to 1 do
           if (XOffset <> 0) or (YOffset <> 0) then
-            Canvas.TextOut(FInfoRect.Left + 4 + XOffset,
-              TextY + YOffset, FInfoLines[I]);
+            Canvas.TextOut(FInfoRect.Left + 4 + XOffset, TextY + YOffset, FInfoLines[I]);
 
       Canvas.Font.Color := clWhite;
       Canvas.TextOut(FInfoRect.Left + 4, TextY, FInfoLines[I]);
@@ -684,10 +692,8 @@ begin
   FInfoRect := Rect(0, 0, 0, 0);
   FInfoLines.Clear;
   FClickMarkerVisible := True;
-  SetBounds(CursorPos.X - MARKER_SIZE div 2,
-    CursorPos.Y - MARKER_SIZE div 2, MARKER_SIZE, MARKER_SIZE);
-  SetWindowPos(Handle, HWND_TOPMOST, Left, Top, Width, Height,
-    SWP_NOACTIVATE or SWP_SHOWWINDOW);
+  SetBounds(CursorPos.X - MARKER_SIZE div 2, CursorPos.Y - MARKER_SIZE div 2, MARKER_SIZE, MARKER_SIZE);
+  SetWindowPos(Handle, HWND_TOPMOST, Left, Top, Width, Height, SWP_NOACTIVATE or SWP_SHOWWINDOW);
   Invalidate;
   UpdateWindow(Handle);
 end;
@@ -734,8 +740,7 @@ begin
 
   Bounds := TargetRect;
   if (Bounds.Right <= Bounds.Left) or (Bounds.Bottom <= Bounds.Top) then
-    Bounds := Rect(InfoLeft, InfoTop, InfoLeft + InfoWidth,
-      InfoTop + InfoHeight)
+    Bounds := Rect(InfoLeft, InfoTop, InfoLeft + InfoWidth, InfoTop + InfoHeight)
   else
   begin
     Bounds.Left := Min(Bounds.Left, InfoLeft);
@@ -753,25 +758,21 @@ end;
 { =================== Unit-scope helpers =================== }
 procedure BeginDebugMouseClick(X, Y: Integer);
 begin
-{$IFDEF DEBUG}
-  if Assigned(Form1) and Assigned(Form1.FInspectorOverlay) then
+  if DebugMode and Assigned(Form1) and Assigned(Form1.FInspectorOverlay) then
   begin
     Form1.FHasInspectorPos := False;
     Form1.FInspectorOverlay.UpdateClickMarker(Point(X, Y));
     Sleep(500);
   end;
-{$ENDIF}
 end;
 
 procedure EndDebugMouseClick;
 begin
-{$IFDEF DEBUG}
-  if Assigned(Form1) and Assigned(Form1.FInspectorOverlay) then
+  if DebugMode and Assigned(Form1) and Assigned(Form1.FInspectorOverlay) then
   begin
     Form1.FInspectorOverlay.HideClickMarker;
     Form1.FHasInspectorPos := False;
   end;
-{$ENDIF}
 end;
 
 /// <summary>
@@ -2464,8 +2465,9 @@ begin
 
   if ConsoleMode then
   begin
-    if ParamCount <> 2 then
-      raise Exception.Create('Usage: Clicker.exe --console <script-file>');
+    if (ParamCount < 2) or (ParamCount > 3) then
+      raise Exception.Create(
+        'Usage: Clicker.exe --console <script-file> [Debug=true|false]');
     FScriptFilename := ParamStr(2);
   end
   else if ParamCount >= 1 then
@@ -2497,7 +2499,7 @@ end;
 
 procedure TForm1.FormShow(Sender: TObject);
 begin
-  ApplySystemTheme;
+  PostMessage(Handle, WM_APPLY_SYSTEM_THEME, 0, 0);
 end;
 
 procedure TForm1.ApplySystemTheme;
@@ -2532,13 +2534,56 @@ begin
   else
     TStyleManager.SetStyle(TStyleManager.SystemStyle);
 
+  ApplyScriptEditorTheme(IsDark);
   FIsDarkTheme := IsDark;
   FThemeInitialized := True;
+end;
+
+procedure TForm1.ApplyScriptEditorTheme(IsDark: Boolean);
+var
+  TextColor: TColor;
+  BackgroundColor: TColor;
+  SavedOnChange: TNotifyEvent;
+  SavedSelStart: Integer;
+  SavedSelLength: Integer;
+begin
+  if IsDark then
+  begin
+    TextColor := RGB(240, 240, 240);
+    BackgroundColor := RGB(30, 30, 30);
+  end
+  else
+  begin
+    TextColor := clWindowText;
+    BackgroundColor := clWindow;
+  end;
+
+  SavedSelStart := mmoScript.SelStart;
+  SavedSelLength := mmoScript.SelLength;
+  SavedOnChange := mmoScript.OnChange;
+  mmoScript.OnChange := nil;
+  try
+    mmoScript.Color := BackgroundColor;
+    mmoScript.Font.Color := TextColor;
+    mmoScript.DefAttributes.Color := TextColor;
+
+    mmoScript.SelectAll;
+    mmoScript.SelAttributes.Color := TextColor;
+    mmoScript.SelStart := SavedSelStart;
+    mmoScript.SelLength := SavedSelLength;
+  finally
+    mmoScript.OnChange := SavedOnChange;
+  end;
 end;
 
 procedure TForm1.WMSettingChange(var Message: TMessage);
 begin
   inherited;
+  ApplySystemTheme;
+end;
+
+procedure TForm1.WMApplySystemTheme(var Message: TMessage);
+begin
   ApplySystemTheme;
 end;
 
@@ -3314,6 +3359,8 @@ begin
     SL.Add('    Loads a script relative to the current script folder, the Clicker.exe folder, or C:\Scripts (in that order). The .script extension is optional.');
     SL.Add('  SetPause <time>');
     SL.Add('    Sets the global default time (in ms) between commands, the default is 100 ms. No default pause is added after Sleep, Load, or Alias.');
+    SL.Add('  DebugMode On|Off');
+    SL.Add('    Enables or disables debug mode and updates the Debug checkbox.');
     SL.Add('  Sleep <milliseconds>');
     SL.Add('    Pauses execution for the specified time (default is 1 second). The default pause time is not added after Sleep.');
     SL.Add('  Alias <name> <value> or Alias <name> <x> <y>');
@@ -3350,7 +3397,7 @@ begin
     SL.Add('    set "CLICKER=C:\Program Files\Clicker\Clicker.exe"');
     SL.Add('    set "SCRIPT=C:\Scripts\Normal Sale.script"');
     SL.Add('');
-    SL.Add('    "%CLICKER%" --console "%SCRIPT%"');
+    SL.Add('    "%CLICKER%" --console "%SCRIPT%" Debug=true');
     SL.Add('    if errorlevel 1 (');
     SL.Add('        echo Script failed. Check the script and try again.');
     SL.Add('        exit /b 1');
@@ -3401,6 +3448,7 @@ end;
 /// </summary>
 /// <param name="Lines" type="TStrings">The list of script lines to execute.</param>
 /// <param name="SourceName" type="string">The name of the source containing the script lines.</param>
+/// <param name="LineOffset" type="Integer">The line offset to apply when reporting errors.</param>
 procedure TForm1.RunScriptLines(Lines: TStrings; const SourceName: string; LineOffset: Integer);
 var
   lineNumber: Integer;
@@ -3806,6 +3854,8 @@ var
       Exit(CmdDumpHere);
     if SameText(S, 'SetPause') then
       Exit(CmdSetPause);
+    if SameText(S, 'DebugMode') then
+      Exit(CmdDebugMode);
     if SameText(S, 'Sleep') then
       Exit(CmdSleep);
     if SameText(S, 'LaneTool') then
@@ -4510,6 +4560,34 @@ begin
       bOK := True;
     end;
 
+    CmdDebugMode:
+    begin
+      if Length(parts) <> 2 then
+        raise Exception.CreateFmt(
+          '%s:%d DebugMode usage: DebugMode On|Off',
+          [SourceName, lineNumber + 1]);
+
+      if SameText(parts[1], 'On') then
+      begin
+        DebugMode := True;
+        chkDebugMode.Checked := True;
+        edtPauseTime.Text := '1000';
+      end
+      else if SameText(parts[1], 'Off') then
+      begin
+        DebugMode := False;
+        chkDebugMode.Checked := False;
+        edtPauseTime.Text := '100';
+      end
+      else
+        raise Exception.CreateFmt(
+          '%s:%d DebugMode expects On or Off, got "%s"',
+          [SourceName, lineNumber + 1, parts[1]]);
+
+      Application.ProcessMessages;
+      bOK := True;
+    end;
+
     CmdSleep:
     begin
       // Pause execution for a specified number of milliseconds. If no time is specified, defaults to 1000 ms (1 second).
@@ -4909,6 +4987,14 @@ begin
     FStopRequested := True;
     Exit;
   end;
+
+  if not ConsoleMode then
+    DebugMode := chkDebugMode.Checked;
+
+  if DebugMode then
+    edtPauseTime.Text := '1000'
+  else
+    edtPauseTime.Text := '100';
 
   FStepLine := -1;
   LineOffset := 0;

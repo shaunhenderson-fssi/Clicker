@@ -34,8 +34,20 @@ begin
       if ConsoleMode then
       begin
         InitializeConsoleOutput;
-        if ParamCount <> 2 then
-          raise Exception.Create('Usage: Clicker.exe --console <script-file>');
+        if (ParamCount < 2) or (ParamCount > 3) then
+          raise Exception.Create(
+            'Usage: Clicker.exe --console <script-file> [Debug=true|false]');
+
+        if ParamCount = 3 then
+        begin
+          if SameText(ParamStr(3), 'Debug=true') then
+            DebugMode := True
+          else if SameText(ParamStr(3), 'Debug=false') then
+            DebugMode := False
+          else
+            raise Exception.Create(
+              'Usage: Clicker.exe --console <script-file> [Debug=true|false]');
+        end;
       end;
 
       Application.Initialize;

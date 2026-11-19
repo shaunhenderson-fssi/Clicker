@@ -108,7 +108,7 @@ object Form1: TForm1
       ParentFont = False
     end
     object lblPauseTime: TLabel
-      Left = 286
+      Left = 270
       Top = 9
       Width = 138
       Height = 15
@@ -129,7 +129,7 @@ object Form1: TForm1
       Text = 'PointOfSale'
     end
     object edtPauseTime: TEdit
-      Left = 436
+      Left = 420
       Top = 6
       Width = 41
       Height = 23
@@ -145,6 +145,14 @@ object Form1: TForm1
       Caption = 'Inspector'
       TabOrder = 2
       OnClick = chkHoverTextClick
+    end
+    object chkDebugMode: TCheckBox
+      Left = 580
+      Top = 8
+      Width = 69
+      Height = 17
+      Caption = 'Debug'
+      TabOrder = 3
     end
   end
   object grpBottom: TGroupBox
