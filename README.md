@@ -62,6 +62,8 @@ It can perform the following tasks:
 - DumpWindow <windowName>
 - DumpHere
 
+When running a script in the editor, `Load` runs the included script without replacing the editor contents. Errors identify the file and line where they occurred.
+
 `Assert Color` checks a screen pixel, for example `Assert Color 121 254 #1a2b3c` or `Assert Color 321 222 red`. The custom named color `clYellowPNS` is also
 available and is equivalent to `#FED803` (RGB 254,216,3). A color mismatch stops the script with an error. It samples up to 10 times at 100 ms intervals
 and passes when at least 8 samples match the expected color. This is because sometimes there are animations on the screen.

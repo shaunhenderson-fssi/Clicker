@@ -157,6 +157,7 @@ type
     FLineNumbersWindowProc: TWndMethod;
     FStopRequested: Boolean;
     FScriptRunning: Boolean;
+    FScriptFailed: Boolean;
     FStepLine: Integer;
     FRecording: Boolean;
     FRecordedText: string;
@@ -768,7 +769,7 @@ end;
 
 procedure EndDebugMouseClick;
 begin
-  if DebugMode and Assigned(Form1) and Assigned(Form1.FInspectorOverlay) then
+  if Assigned(Form1) and Assigned(Form1.FInspectorOverlay) then
   begin
     Form1.FInspectorOverlay.HideClickMarker;
     Form1.FHasInspectorPos := False;
@@ -2453,6 +2454,7 @@ begin
   FHasInspectorPos := False;
   FStopRequested := False;
   FScriptRunning := False;
+  FScriptFailed := False;
   FStepLine := -1;
   FRecording := False;
   FScriptFilename := '';
@@ -3456,13 +3458,11 @@ var
   Line: string;
   parts: TArray<string>;
 
-  procedure resetMainWindow;
+  function IsEditorSource: Boolean;
   begin
-    if not FScriptModified then
-    begin
-      mmoScript.Lines.Clear;
-      mmoScript.Lines.LoadFromFile(FScriptFilename, TEncoding.UTF8); //reset the script back to its initial state, due to 'load' commands changing it
-    end;
+    if FScriptFilename = '' then
+      Exit(SameText(SourceName, 'MainScript'));
+    Result := SameText(ExpandFileName(SourceName), ExpandFileName(FScriptFilename));
   end;
 
 begin
@@ -3474,7 +3474,6 @@ begin
     if FStopRequested then
     begin
       lblStatus.Caption := COMPLETEDALLTASKS;
-      resetMainWindow;
       Exit;
     end;
 
@@ -3497,24 +3496,38 @@ begin
     if FStopRequested then
     begin
       lblStatus.Caption := COMPLETEDALLTASKS;
-      resetMainWindow;
       Exit;
     end;
 
     // ---- COMMAND DISPATCH ----
-    if (sourceLineNumber >= 0) and (sourceLineNumber < mmoLineNumbers.Lines.Count) then
+    if IsEditorSource and (sourceLineNumber >= 0) and
+      (sourceLineNumber < mmoLineNumbers.Lines.Count) then
+    begin
       mmoLineNumbers.Lines[sourceLineNumber] := Format('%s %d', [RUNNING, sourceLineNumber + 1]);
+      Application.ProcessMessages;
+    end;
 
     if ExecuteCommand(parts, sourceLineNumber, SourceName) then
     begin
-      if (sourceLineNumber >= 0) and (sourceLineNumber < mmoLineNumbers.Lines.Count) then
+      if FScriptFailed then
+      begin
+        if IsEditorSource and (sourceLineNumber >= 0) and
+          (sourceLineNumber < mmoLineNumbers.Lines.Count) then
+          mmoLineNumbers.Lines[sourceLineNumber] := Format('%s %d', [ERROR, sourceLineNumber + 1]);
+        Exit;
+      end;
+
+      if IsEditorSource and (sourceLineNumber >= 0) and
+        (sourceLineNumber < mmoLineNumbers.Lines.Count) then
         mmoLineNumbers.Lines[sourceLineNumber] := Format('%s %d', [COMPLETED, sourceLineNumber + 1]);
     end
     else
     begin
-      if (sourceLineNumber >= 0) and (sourceLineNumber < mmoLineNumbers.Lines.Count) then
+      if IsEditorSource and (sourceLineNumber >= 0) and
+        (sourceLineNumber < mmoLineNumbers.Lines.Count) then
         mmoLineNumbers.Lines[sourceLineNumber] := Format('%s %d', [ERROR, sourceLineNumber + 1]);
 
+      FScriptFailed := True;
       lblStatus.Caption := Format(
         'Error on line %d: %s',
         [sourceLineNumber + 1, Line]);
@@ -3534,7 +3547,6 @@ begin
     if FStopRequested then
     begin
       lblStatus.Caption := COMPLETEDALLTASKS;
-      resetMainWindow;
       Exit;
     end;
 
@@ -3544,13 +3556,11 @@ begin
     if FStopRequested then
     begin
       lblStatus.Caption := COMPLETEDALLTASKS;
-      resetMainWindow;
       Exit;
     end;
   end;
 
   lblStatus.Caption := COMPLETEDALLTASKS;
-  resetMainWindow;
 end;
 
 procedure TForm1.PauseForScript(Duration: Integer);
@@ -3732,52 +3742,6 @@ begin
   raise Exception.CreateFmt(
     'Script "%s" not found. Searched the script folder, application folder, and C:\Scripts.',
     [ScriptName]);
-end;
-
-/// <summary>
-/// Expands "Load" commands in a list of script lines by replacing them with the contents of the specified script files.
-/// This is analogous to a preprocessor include directive, allowing scripts to be modular and reusable.
-/// </summary>
-/// <param name="Lines" type="TStrings">The list of script lines to process.</param>
-/// <param name="SourceFileName" type="string">The name of the source file containing the script lines.</param>
-procedure ExpandLoadCommands(Lines: TStringList; const SourceFileName: string);
-var
-  i: Integer;
-  Parts: TArray<string>;
-  LoadFile: string;
-  InsertLines: TStringList;
-begin
-  i := 0;
-  while i < Lines.Count do
-  begin
-    Parts := Tokenize(Lines[i]);
-
-    if (Length(Parts) >= 2) and SameText(Parts[0], 'Load') then
-    begin
-      LoadFile := ResolveScriptPath(Parts[1], SourceFileName);
-
-      InsertLines := TStringList.Create;
-      try
-        InsertLines.LoadFromFile(LoadFile, TEncoding.UTF8);
-        ExpandLoadCommands(InsertLines, LoadFile);
-
-        // Remove the "Load xxx" line
-        Lines.Delete(i);
-
-        // Insert loaded file contents at the same position
-        for var j := 0 to InsertLines.Count - 1 do
-          Lines.Insert(i + j, InsertLines[j]);
-
-        // IMPORTANT: do NOT increment i here
-        // Newly inserted lines must also be scanned for Load
-        Continue;
-      finally
-        InsertLines.Free;
-      end;
-    end;
-
-    Inc(i);
-  end;
 end;
 
 /// <summary>
@@ -4378,6 +4342,8 @@ begin
           'Error on line %d. SetText usage:' + CRLF + ' SetText <Name|Index|ID:nnn|HWND:hex> <text>' + CRLF + ' SetText <window> <Name|Index|ID:nnn|HWND:hex> <text>',
           [lineNumber + 1]);
 
+      var EditWnd := 0;
+
       if Length(parts) = 3 then
       begin
         // -------- Default window form --------
@@ -4391,11 +4357,12 @@ begin
           );
 
         var ScreenX, ScreenY: Integer;
-        var EditWnd := 0;
+
         if TryResolveMousePointAlias(parts[1], ScreenX, ScreenY) then
           EditWnd := FindEditAtPoint(Point(ScreenX, ScreenY))
         else
           EditWnd := ResolveEditHandle(RootWnd, ResolveAlias(parts[1]));
+
         if EditWnd = 0 then
           raise Exception.CreateFmt(
             'Error on line %d. No Edit matched "%s" under "%s".',
@@ -4418,7 +4385,7 @@ begin
           );
 
         var ScreenX, ScreenY: Integer;
-        var EditWnd := 0;
+
         if TryResolveMousePointAlias(parts[2], ScreenX, ScreenY) then
           EditWnd := FindEditAtPoint(Point(ScreenX, ScreenY))
         else
@@ -4978,6 +4945,7 @@ end;
 procedure TForm1.btnGoClick(Sender: TObject);
 var
   Script: TStringList;
+  SourceName: string;
   SelectionStart, SelectionLength: Integer;
   FirstLine, LastLine, LineIndex: Integer;
   LineOffset: Integer;
@@ -5026,6 +4994,7 @@ begin
 
   FScriptRunning := True;
   FStopRequested := False;
+  FScriptFailed := False;
   btnGo.Caption := 'Stop';
   btnGo.ImageIndex := IMAGE_STOP;
   FAliases.Clear;
@@ -5038,17 +5007,12 @@ begin
           Script.Add(mmoScript.Lines[LineIndex]);
       end
       else
-      begin
         Script.Text := mmoScript.Text;
 
-        // Expand all Load commands first
-        ExpandLoadCommands(Script, FScriptFilename);
-
-        // Optional: reflect expansion back into editor
-        mmoScript.Text := Script.Text;
-      end;
-
-      RunScriptLines(Script, 'MainScript', LineOffset);
+      SourceName := FScriptFilename;
+      if SourceName = '' then
+        SourceName := 'MainScript';
+      RunScriptLines(Script, SourceName, LineOffset);
     finally
       Script.Free;
       FScriptRunning := False;
@@ -5074,6 +5038,7 @@ procedure TForm1.btnStepClick(Sender: TObject);
 var
   Script: TStringList;
   LineNumber: Integer;
+  SourceName: string;
 begin
   if FScriptRunning then
     Exit;
@@ -5105,17 +5070,27 @@ begin
 
   FStepLine := LineNumber;
   FStopRequested := False;
+  FScriptFailed := False;
   FScriptRunning := True;
   mmoLineNumbers.Lines[LineNumber] := Format('%s %d', [RUNNING, LineNumber + 1]);
   Script := TStringList.Create;
   try
     try
       Script.Add(mmoScript.Lines[LineNumber]);
-      RunScriptLines(Script, 'MainScript', LineNumber);
+      SourceName := FScriptFilename;
+      if SourceName = '' then
+        SourceName := 'MainScript';
+      RunScriptLines(Script, SourceName, LineNumber);
     finally
       Script.Free;
       FScriptRunning := False;
       EndDebugMouseClick;
+    end;
+
+    if FScriptFailed then
+    begin
+      mmoLineNumbers.Lines[LineNumber] := Format('%s %d', [ERROR, LineNumber + 1]);
+      Exit;
     end;
 
     if (LineNumber < mmoLineNumbers.Lines.Count) and
